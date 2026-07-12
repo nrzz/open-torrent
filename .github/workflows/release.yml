@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Build Windows
+        working-directory: app
+        run: flutter build windows --release --dart-define=OPENTORRENT_MOCK=true
+      - name: Zip Windows portable
+        shell: pwsh
+        run: |
+          Compress-Archive -Path app/build/windows/x64/runner/Release/* -DestinationPath OpenTorrent-windows-x64.zip
+      - name: Build APK
+        working-directory: app
+        run: flutter build apk --release --dart-define=OPENTORRENT_MOCK=true
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            OpenTorrent-windows-x64.zip
+            app/build/app/outputs/flutter-apk/app-release.apk

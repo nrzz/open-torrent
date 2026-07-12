@@ -1,0 +1,35 @@
+# Root
+.idea/
+.vscode/
+*.iml
+.DS_Store
+dist/
+third_party/
+build_windows.log
+vs_install.log
+.symlink_test*
+
+# Native
+core/build/
+core/build-*/
+core/**/CMakeCache.txt
+core/**/CMakeFiles/
+*.obj
+*.o
+*.dll
+*.so
+*.a
+*.lib
+*.exe
+!packaging/**
+
+# Flutter (also covered by app/.gitignore)
+app/.dart_tool/
+app/.flutter-plugins-dependencies
+app/build/
+app/.packages
+
+# Secrets
+*.jks
+key.properties
+.env

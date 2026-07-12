@@ -1,0 +1,36 @@
+# F-Droid metadata stub — place under metadata/org.opentorrent.open_torrent.yml in an fdroiddata fork
+Categories:
+  - Internet
+License: GPL-3.0-or-later
+AuthorName: OpenTorrent Contributors
+WebSite: https://github.com/OWNER/open-torrent
+SourceCode: https://github.com/OWNER/open-torrent
+IssueTracker: https://github.com/OWNER/open-torrent/issues
+Changelog: https://github.com/OWNER/open-torrent/releases
+
+AutoName: OpenTorrent
+Summary: Free ad-free BitTorrent client
+Description: |-
+  OpenTorrent is a free, open-source BitTorrent client for Android.
+  No ads, no telemetry, no paywalls. Built on libtorrent-rasterbar.
+
+RepoType: git
+Repo: https://github.com/OWNER/open-torrent.git
+
+Builds:
+  - versionName: 0.1.0
+    versionCode: 1
+    commit: v0.1.0
+    output: app/build/app/outputs/flutter-apk/app-release.apk
+    srclibs:
+      - flutter@stable
+    prebuild: |
+      $$flutter$$/bin/flutter config --no-analytics
+      cd app && $$flutter$$/bin/flutter pub get
+    build: |
+      cd app && $$flutter$$/bin/flutter build apk --release
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: 0.1.0
+CurrentVersionCode: 1
