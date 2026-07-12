@@ -1,38 +1,47 @@
 # Build libtorrent-backed OpenTorrent core
 
-## Windows (vcpkg)
+## Windows — stub (no libtorrent)
+
+Useful for CI and validating the C API without vcpkg:
 
 ```powershell
-git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
-C:\vcpkg\bootstrap-vcpkg.bat
-$env:VCPKG_ROOT = "C:\vcpkg"
+cd core
+cmake -B build -S . -G "MinGW Makefiles" -DOPENTORRENT_USE_LIBTORRENT=OFF -DCMAKE_BUILD_TYPE=Release
+# or: -G Ninja / Visual Studio generator with MSVC
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+## Windows — libtorrent via vcpkg (MSVC)
+
+```powershell
+# From repo root
+.\scripts\build_libtorrent_windows.ps1
+```
+
+Or manually:
+
+```powershell
+$env:VCPKG_ROOT = "C:\vcpkg"   # or third_party\vcpkg
 vcpkg install libtorrent:x64-windows
 
-cmake -B build -S . `
-  -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+cmake -B build-lt -S . `
+  -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake" `
   -DOPENTORRENT_USE_LIBTORRENT=ON
-cmake --build build --config Release
-ctest --test-dir build -C Release
+cmake --build build-lt --config Release
 ```
 
-## Stub mode (no libtorrent)
-
-```powershell
-cmake -B build -S . -DOPENTORRENT_USE_LIBTORRENT=OFF
-cmake --build build --config Release
-```
+Copy the resulting `opentorrent_core.dll` (and libtorrent/OpenSSL DLLs) next to `open_torrent.exe`.
 
 ## Android (NDK)
 
-```powershell
-# After installing Android NDK and building libtorrent with the NDK toolchain:
-cmake -B build-android -S . `
-  -DCMAKE_TOOLCHAIN_FILE=$env:ANDROID_NDK/build/cmake/android.toolchain.cmake `
-  -DANDROID_ABI=arm64-v8a `
-  -DANDROID_PLATFORM=android-24 `
-  -DOPENTORRENT_USE_LIBTORRENT=ON `
-  -DCMAKE_PREFIX_PATH=<path-to-libtorrent-android-prefix>
-cmake --build build-android --config Release
+```bash
+# Requires ANDROID_NDK and a libtorrent prefix built for the ABI
+./scripts/build_libtorrent_android.sh arm64-v8a
 ```
 
-Prebuilt scripts live in `scripts/` at the repo root.
+See script comments for `LIBTORRENT_ANDROID_PREFIX`.
+
+## Manifest mode
+
+[`vcpkg.json`](vcpkg.json) lists the `libtorrent` dependency for manifest-mode installs.

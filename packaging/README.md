@@ -1,21 +1,39 @@
 # Distribution
 
-## GitHub Releases (primary)
+Primary channel: **[GitHub Releases](https://github.com/nrzz/open-torrent/releases)**.
 
-1. Tag a version: `git tag v0.1.0 && git push origin v0.1.0`
-2. The [Release workflow](../.github/workflows/release.yml) builds:
-   - `OpenTorrent-windows-x64.zip` (portable)
-   - `app-release.apk`
-3. Optionally compile [Inno Setup](windows/opentorrent.iss) locally and attach `OpenTorrent-Setup-*.exe`.
+## Cutting a release
+
+1. Update [CHANGELOG.md](../CHANGELOG.md) and bump `version` in [`app/pubspec.yaml`](../app/pubspec.yaml).
+2. Commit, then tag and push:
+
+```powershell
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+3. The [Release workflow](../.github/workflows/release.yml) builds independently:
+   - `OpenTorrent-windows-x64.zip`
+   - `app-release.apk`  
+   and attaches both to the GitHub Release.
+
+## Windows installer (optional)
+
+Compile [`windows/opentorrent.iss`](windows/opentorrent.iss) with [Inno Setup](https://jrsoftware.org/isinfo.php) after a release build, then attach `OpenTorrent-Setup-*.exe` to the release.
 
 ## winget
 
-Update SHA256 in [winget/OpenTorrent.OpenTorrent.yaml](winget/OpenTorrent.OpenTorrent.yaml) after the first release, then PR to `microsoft/winget-pkgs`.
+1. After a tagged release, fill in `InstallerSha256` in [`winget/OpenTorrent.OpenTorrent.yaml`](winget/OpenTorrent.OpenTorrent.yaml).
+2. Open a PR against [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs).
 
 ## F-Droid
 
-Fork `fdroiddata`, add [fdroid/org.opentorrent.open_torrent.yml](fdroid/org.opentorrent.open_torrent.yml), point `Repo`/`SourceCode` at your GitHub URL, and submit an MR.
+1. Fork [fdroiddata](https://gitlab.com/fdroid/fdroiddata).
+2. Add [`fdroid/org.opentorrent.open_torrent.yml`](fdroid/org.opentorrent.open_torrent.yml) under `metadata/`.
+3. Submit a merge request.
 
-## Auto-update
+## In-app update check
 
-Desktop builds can check `https://api.github.com/repos/OWNER/open-torrent/releases/latest` (wire OWNER after publishing).
+Desktop settings can query:
+
+`https://api.github.com/repos/nrzz/open-torrent/releases/latest`

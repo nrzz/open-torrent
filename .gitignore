@@ -3,33 +3,50 @@
 .vscode/
 *.iml
 .DS_Store
+Thumbs.db
 dist/
 third_party/
+*.log
 build_windows.log
 vs_install.log
 .symlink_test*
+*.zip
+!packaging/**
 
 # Native
 core/build/
 core/build-*/
-core/**/CMakeCache.txt
-core/**/CMakeFiles/
+core/build-lt/
+core/build-android*/
+**/CMakeCache.txt
+**/CMakeFiles/
+**/cmake_install.cmake
+**/Makefile
 *.obj
 *.o
 *.dll
 *.so
+*.dylib
 *.a
 *.lib
 *.exe
 !packaging/**
 
-# Flutter (also covered by app/.gitignore)
+# Flutter
 app/.dart_tool/
+app/.flutter-plugins
 app/.flutter-plugins-dependencies
-app/build/
 app/.packages
+app/build/
+app/.idea/
+app/**/*.iml
+app/android/local.properties
+app/android/.gradle/
+app/android/app/libs/
 
-# Secrets
+# Secrets / signing
 *.jks
+*.keystore
 key.properties
 .env
+.env.*

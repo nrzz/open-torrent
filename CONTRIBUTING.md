@@ -4,38 +4,60 @@ Thanks for helping build a free, ad-free torrent client.
 
 ## Ground rules
 
-- Keep the app free of ads, trackers, and paywalls.
-- Prefer small, focused PRs.
-- Do not pass C++ types across the FFI boundary — only the flat C API in `core/include/opentorrent.h`.
-- Match existing code style in each layer (C++ / Dart).
+- Keep the app free of ads, trackers, telemetry, and paywalls.
+- Prefer small, focused pull requests.
+- Do **not** pass C++ types across the FFI boundary — only the flat C API in [`core/include/opentorrent.h`](core/include/opentorrent.h).
+- Match existing style in each layer (C++ / Dart / Kotlin).
 
 ## Development setup
 
-1. Install Flutter, CMake, a C++ toolchain, and vcpkg.
-2. Set `VCPKG_ROOT` and install packages:
+1. Install Flutter 3.22+, CMake 3.20+, and a C++17 toolchain.
+2. On Windows, enable [Developer Mode](ms-settings:developers) (Flutter plugin symlinks).
+3. Optional for real transfers: install [vcpkg](https://vcpkg.io/) and set `VCPKG_ROOT`.
 
-```text
-vcpkg install libtorrent:x64-windows openssl:x64-windows
+```powershell
+git clone https://github.com/nrzz/open-torrent.git
+cd open-torrent\app
+flutter pub get
+flutter run -d windows --dart-define=OPENTORRENT_MOCK=true
 ```
 
-3. Build `core/` then `app/` as described in the README.
+### Mock vs native engine
 
-### Mock engine mode
-
-If libtorrent is not built yet, the Flutter app can run with `--dart-define=OPENTORRENT_MOCK=true` for UI work.
+| Goal | Command |
+|------|---------|
+| UI / integration without libtorrent | `--dart-define=OPENTORRENT_MOCK=true` |
+| Link real libtorrent | Build `core/` with vcpkg (see [core/BUILD.md](core/BUILD.md)), place DLL next to the app |
 
 ## Testing
 
 ```powershell
-cd core && ctest --test-dir build
-cd app && flutter test
+# Native stub tests
+cd core
+cmake -B build -S . -DOPENTORRENT_USE_LIBTORRENT=OFF
+cmake --build build
+ctest --test-dir build --output-on-failure
+
+# Flutter
+cd ..\app
+flutter test
+flutter analyze --no-fatal-infos
 ```
+
+CI runs the same checks on every push/PR (see `.github/workflows/ci.yml`).
 
 ## Pull requests
 
-- Describe *why* the change exists.
+- Describe **why** the change exists.
 - Include screenshots for UI changes.
-- Ensure CI is green.
+- Keep CI green (core tests, Flutter tests, Android APK, Windows build).
+- Update [CHANGELOG.md](CHANGELOG.md) for user-facing changes.
+
+## Project docs
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — design overview
+- [packaging/README.md](packaging/README.md) — release / store packaging
+- [SECURITY.md](SECURITY.md) — vulnerability reports
 
 ## Code of conduct
 

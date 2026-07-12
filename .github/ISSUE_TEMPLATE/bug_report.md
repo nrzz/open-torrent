@@ -12,15 +12,19 @@ A clear description of what went wrong.
 - [ ] Windows
 
 **Version**
-OpenTorrent version / commit:
+OpenTorrent version / commit / release tag:
 
 **Engine**
-- [ ] Mock
-- [ ] libtorrent
+- [ ] Mock (`OPENTORRENT_MOCK` or no native DLL)
+- [ ] libtorrent (native)
 
 **Steps to reproduce**
 1.
 2.
+3.
+
+**Expected behavior**
+
 
 **Logs**
-Attach debug log if available (Settings → Debug logging).
+Enable Settings → Debug logging if available, and paste relevant lines (no personal paths/secrets).

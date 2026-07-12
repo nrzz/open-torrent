@@ -1,17 +1,29 @@
-# open_torrent
+# Flutter app (`open_torrent`)
 
-A new Flutter project.
+Cross-platform UI for OpenTorrent (Android + Windows).
 
-## Getting Started
+## Commands
 
-This project is a starting point for a Flutter application.
+```powershell
+flutter pub get
+flutter test
+flutter analyze
+flutter run -d windows --dart-define=OPENTORRENT_MOCK=true
+flutter build apk --release --dart-define=OPENTORRENT_MOCK=true
+flutter build windows --release --dart-define=OPENTORRENT_MOCK=true
+```
 
-A few resources to get you started if this is your first Flutter project:
+## Layout
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+```text
+lib/
+  engine/     FFI bindings, mock engine, TorrentController
+  ui/         Screens
+  platform/   Android service bridge
+  util/       Formatting, magnet validation, update check
+android/      APK project + DownloadService
+windows/      Desktop runner
+test/         Unit / widget / e2e-style tests
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+See the [root README](../README.md) and [architecture notes](../docs/ARCHITECTURE.md).
