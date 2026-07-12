@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here.
 
+## [0.2.1] — 2026-07-12
+
+### Added
+- **Android live libtorrent engine** via NDK + vcpkg (`scripts/build_libtorrent_android.ps1`)
+- `jniLibs` packaging for `libopentorrent_core.so` (arm64-v8a+)
+- Live Android APK packaging + offline e2e verifier scripts
+
+### Fixed
+- Mock banner on Android release builds when native `.so` is present
+- FFI loader looks up Android system libraries by SONAME
+
 ## [0.2.0] — 2026-07-12
 
 ### Added
@@ -21,7 +32,8 @@ All notable changes to this project are documented here.
 
 ### Notes
 - **Windows live:** build with `scripts/build_libtorrent_windows.ps1` (no `OPENTORRENT_MOCK`).
-- **Android:** public APK currently uses the mock engine until `libopentorrent_core.so` + libtorrent NDK are bundled; UI, intents, and FGS are production-shaped.
+- **Android live:** build with `scripts/build_libtorrent_android.ps1` (API 28+, arm64-v8a).
+- See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for engine modes.
 
 ## [0.1.0] — 2026-07-12
 

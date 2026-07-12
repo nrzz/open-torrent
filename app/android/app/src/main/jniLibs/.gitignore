@@ -1,0 +1,3 @@
+﻿# Keep directory; large .so files are built locally / in CI
+*
+!.gitignore

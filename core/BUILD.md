@@ -33,14 +33,16 @@ cmake --build build-lt --config Release
 
 Copy the resulting `opentorrent_core.dll` (and libtorrent/OpenSSL DLLs) next to `open_torrent.exe`.
 
-## Android (NDK)
+## Android (NDK + vcpkg)
 
-```bash
-# Requires ANDROID_NDK and a libtorrent prefix built for the ABI
-./scripts/build_libtorrent_android.sh arm64-v8a
+```powershell
+# Requires Android SDK/NDK (API 28+). Builds arm64-v8a by default.
+.\scripts\build_libtorrent_android.ps1 -OnlyAbi arm64-v8a
+.\scripts\package_release_android_live.ps1
+.\scripts\e2e_verify_android_live.ps1
 ```
 
-See script comments for `LIBTORRENT_ANDROID_PREFIX`.
+The shared library lands in `app/android/app/src/main/jniLibs/<abi>/libopentorrent_core.so` (gitignored). Rebuild the Flutter APK **without** `OPENTORRENT_MOCK`.
 
 ## Manifest mode
 

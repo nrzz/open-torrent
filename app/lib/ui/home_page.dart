@@ -182,8 +182,9 @@ class _HomePageState extends State<HomePage> {
                     Expanded(
                       child: Text(
                         'Mock engine — not transferring real torrents. '
-                        'Build & bundle native core (scripts/build_libtorrent_windows.ps1), '
-                        'then rebuild without OPENTORRENT_MOCK.',
+                        'Windows: scripts/build_libtorrent_windows.ps1. '
+                        'Android: scripts/build_libtorrent_android.ps1. '
+                        'Then rebuild without OPENTORRENT_MOCK.',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: Theme.of(context).colorScheme.onErrorContainer,
                             ),

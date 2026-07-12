@@ -68,7 +68,7 @@ class TorrentController extends ChangeNotifier {
     } else {
       usingMock = true;
       _mock = MockTorrentEngine(settings)..start();
-      engineVersion = 'OpenTorrent/0.2.0 mock';
+      engineVersion = 'OpenTorrent/0.2.1 mock';
       await _loadMockResume();
     }
 

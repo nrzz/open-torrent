@@ -17,11 +17,28 @@ android {
 
     defaultConfig {
         applicationId = "org.opentorrent.open_torrent"
-        minSdk = flutter.minSdkVersion
+        // Live libtorrent .so is built for API 28+ (aligned_alloc / NDK triplet).
+        minSdk = maxOf(flutter.minSdkVersion, 28)
         targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
+        ndk {
+            // Prefer arm64; include others only when bundled.
+            abiFilters += listOf("arm64-v8a")
+        }
+    }
+
+    sourceSets {
+        getByName("main") {
+            jniLibs.srcDirs("src/main/jniLibs")
+        }
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 
     buildTypes {

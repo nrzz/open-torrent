@@ -67,6 +67,19 @@ if(WIN32)
   target_link_libraries(opentorrent_core PUBLIC ws2_32)
 endif()
 
+if(ANDROID)
+  # Required for __android_log_* if used; also ensures proper link on NDK.
+  find_library(ANDROID_LOG_LIB log)
+  if(ANDROID_LOG_LIB)
+    target_link_libraries(opentorrent_core PUBLIC ${ANDROID_LOG_LIB})
+  endif()
+  # Export C API symbols for Dart FFI (DynamicLibrary.open).
+  set_target_properties(opentorrent_core PROPERTIES
+    OUTPUT_NAME opentorrent_core
+    ANDROID_ARM_MODE arm
+  )
+endif()
+
 install(TARGETS opentorrent_core
   RUNTIME DESTINATION bin
   LIBRARY DESTINATION lib

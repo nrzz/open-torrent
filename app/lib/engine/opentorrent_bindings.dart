@@ -283,6 +283,19 @@ class OpenTorrentNative {
   final ApplySettings applySettings;
 
   static OpenTorrentNative? tryLoad() {
+    if (Platform.isAndroid) {
+      // Packaged under jniLibs as libopentorrent_core.so — system loader resolves it.
+      for (final name in const [
+        'libopentorrent_core.so',
+        'opentorrent_core.so',
+      ]) {
+        try {
+          return OpenTorrentNative(ffi.DynamicLibrary.open(name));
+        } catch (_) {}
+      }
+      return null;
+    }
+
     final names = Platform.isWindows
         ? const ['opentorrent_core.dll']
         : const ['libopentorrent_core.so', 'opentorrent_core.so'];
