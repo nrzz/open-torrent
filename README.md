@@ -99,6 +99,10 @@ docs/          Architecture and design notes
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Keep the app free of ads, trackers, and paywalls.
 
+## Maintainers
+
+Co-maintained by [@nrzz](https://github.com/nrzz) and [@Dasprakash-Sekar](https://github.com/Dasprakash-Sekar). Shared access and workflow: [MAINTAINERS.md](MAINTAINERS.md).
+
 ## License
 
 [GNU GPL v3](LICENSE). Third-party notices: [core/THIRD_PARTY.md](core/THIRD_PARTY.md).

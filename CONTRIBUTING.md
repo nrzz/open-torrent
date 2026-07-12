@@ -2,6 +2,12 @@
 
 Thanks for helping build a free, ad-free torrent client.
 
+## Maintainers
+
+This repo is co-maintained by [@nrzz](https://github.com/nrzz) and [@Dasprakash-Sekar](https://github.com/Dasprakash-Sekar) (both have admin access). See [MAINTAINERS.md](MAINTAINERS.md) for the shared workflow.
+
+External contributors: fork → branch → PR. Maintainers: branch → PR (preferred) or direct push for trivial fixes.
+
 ## Ground rules
 
 - Keep the app free of ads, trackers, telemetry, and paywalls.
@@ -52,9 +58,11 @@ CI runs the same checks on every push/PR (see `.github/workflows/ci.yml`).
 - Include screenshots for UI changes.
 - Keep CI green (core tests, Flutter tests, Android APK, Windows build).
 - Update [CHANGELOG.md](CHANGELOG.md) for user-facing changes.
+- Request review from a co-maintainer when the change is large (`@nrzz` / `@Dasprakash-Sekar`).
 
 ## Project docs
 
+- [MAINTAINERS.md](MAINTAINERS.md) — co-maintainer access and release flow
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — design overview
 - [packaging/README.md](packaging/README.md) — release / store packaging
 - [SECURITY.md](SECURITY.md) — vulnerability reports

@@ -1,0 +1,13 @@
+# Shared maintainers — default owners for all paths
+* @nrzz @Dasprakash-Sekar
+
+# Native engine
+/core/ @nrzz @Dasprakash-Sekar
+
+# Flutter app
+/app/ @nrzz @Dasprakash-Sekar
+
+# Packaging & release
+/packaging/ @nrzz @Dasprakash-Sekar
+/.github/ @nrzz @Dasprakash-Sekar
+/scripts/ @nrzz @Dasprakash-Sekar

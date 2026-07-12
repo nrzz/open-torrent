@@ -12,7 +12,7 @@
 
 Please use **GitHub Security Advisories** on [nrzz/open-torrent](https://github.com/nrzz/open-torrent/security/advisories/new).
 
-Do not open a public issue for remotely exploitable bugs until a fix is available.
+Maintainers ([@nrzz](https://github.com/nrzz), [@Dasprakash-Sekar](https://github.com/Dasprakash-Sekar)) triage private advisories. Do not open a public issue for remotely exploitable bugs until a fix is available.
 
 Include:
 
