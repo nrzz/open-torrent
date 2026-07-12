@@ -55,10 +55,22 @@ ot_torrent_status to_status(const TorrentRecord& rec) {
 }
 
 #if OPENTORRENT_HAS_LIBTORRENT
+std::string to_hex_bytes(lt::span<char const> s) {
+  static constexpr char kHex[] = "0123456789abcdef";
+  std::string out;
+  out.resize(static_cast<size_t>(s.size()) * 2);
+  for (int i = 0; i < s.size(); ++i) {
+    auto const b = static_cast<unsigned char>(s[i]);
+    out[static_cast<size_t>(i) * 2] = kHex[b >> 4];
+    out[static_cast<size_t>(i) * 2 + 1] = kHex[b & 0x0f];
+  }
+  return out;
+}
+
 std::string hash_like(const lt::torrent_handle& h) {
   auto st = h.status();
-  if (st.info_hashes.has_v1()) return lt::aux::to_hex(st.info_hashes.v1);
-  if (st.info_hashes.has_v2()) return lt::aux::to_hex(st.info_hashes.v2);
+  if (st.info_hashes.has_v1()) return to_hex_bytes(st.info_hashes.v1);
+  if (st.info_hashes.has_v2()) return to_hex_bytes(st.info_hashes.get_best());
   return {};
 }
 #endif
@@ -363,9 +375,9 @@ ot_error ot_set_queue_position(ot_session* session, const char* info_hash, int p
   rec->queue_position = position;
 #if OPENTORRENT_HAS_LIBTORRENT
   if (rec->handle.is_valid()) {
-    // libtorrent queue APIs: queue_position_set available on handle in recent versions
-    while (rec->handle.queue_position() > position) rec->handle.queue_position_up();
-    while (rec->handle.queue_position() < position) rec->handle.queue_position_down();
+    const auto target = lt::queue_position_t{position};
+    while (rec->handle.queue_position() > target) rec->handle.queue_position_up();
+    while (rec->handle.queue_position() < target) rec->handle.queue_position_down();
   }
 #endif
   return OT_OK;
@@ -427,7 +439,9 @@ ot_error ot_set_file_priority(ot_session* session, const char* info_hash, int in
   rec->files[static_cast<size_t>(index)].priority = priority;
 #if OPENTORRENT_HAS_LIBTORRENT
   if (rec->handle.is_valid()) {
-    rec->handle.file_priority(lt::file_index_t{index}, static_cast<lt::download_priority_t>(priority));
+    rec->handle.file_priority(
+        lt::file_index_t{index},
+        lt::download_priority_t{static_cast<std::uint8_t>(priority)});
   }
 #endif
   return OT_OK;

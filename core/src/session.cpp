@@ -51,13 +51,25 @@ ot_torrent_status to_status(const TorrentRecord& rec) {
 }
 
 #if OPENTORRENT_HAS_LIBTORRENT
+std::string to_hex_bytes(lt::span<char const> s) {
+  static constexpr char kHex[] = "0123456789abcdef";
+  std::string out;
+  out.resize(static_cast<size_t>(s.size()) * 2);
+  for (int i = 0; i < s.size(); ++i) {
+    auto const b = static_cast<unsigned char>(s[i]);
+    out[static_cast<size_t>(i) * 2] = kHex[b >> 4];
+    out[static_cast<size_t>(i) * 2 + 1] = kHex[b & 0x0f];
+  }
+  return out;
+}
+
 std::string hash_to_hex(const lt::sha1_hash& h) {
-  return lt::aux::to_hex(h);
+  return to_hex_bytes(h);
 }
 
 std::string hash_to_hex(const lt::info_hash_t& ih) {
-  if (ih.has_v1()) return lt::aux::to_hex(ih.v1);
-  if (ih.has_v2()) return lt::aux::to_hex(ih.v2);
+  if (ih.has_v1()) return to_hex_bytes(ih.v1);
+  if (ih.has_v2()) return to_hex_bytes(ih.get_best());
   return {};
 }
 
@@ -113,30 +125,34 @@ void ot_session::sync_status(TorrentRecord& rec) {
   rec.upload_rate = st.upload_rate;
   rec.num_peers = st.num_peers;
   rec.num_seeds = st.num_seeds;
-  rec.queue_position = st.queue_position;
-  rec.paused = st.paused ? 1 : 0;
+  rec.queue_position = static_cast<int>(static_cast<std::int32_t>(st.queue_position));
+  const bool paused = bool(st.flags & lt::torrent_flags::paused);
+  rec.paused = paused ? 1 : 0;
   rec.finished = st.is_finished ? 1 : 0;
-  rec.state = map_state(st.state, st.paused);
+  rec.state = map_state(st.state, paused);
   if (st.download_rate > 0 && st.total_wanted > st.total_wanted_done) {
     rec.eta_seconds = static_cast<int64_t>((st.total_wanted - st.total_wanted_done) / st.download_rate);
   } else {
     rec.eta_seconds = -1;
   }
-  if (auto ti = st.torrent_file) {
+  if (std::shared_ptr<const lt::torrent_info> ti = st.torrent_file.lock()) {
     rec.files.clear();
-    auto& fs_storage = ti->files();
+    auto const& fs_storage = ti->files();
+    auto prio = rec.handle.get_file_priorities();
     for (lt::file_index_t i(0); i < fs_storage.end_file(); ++i) {
       ot_file_entry fe{};
       copy_cstr(fe.path, sizeof(fe.path), fs_storage.file_path(i));
       fe.size = fs_storage.file_size(i);
-      auto prio = rec.handle.get_file_priorities();
-      int idx = static_cast<int>(i);
+      const int idx = static_cast<int>(static_cast<std::int32_t>(i));
       if (idx >= 0 && idx < static_cast<int>(prio.size())) {
-        fe.priority = static_cast<ot_file_priority>(static_cast<int>(prio[i]));
+        fe.priority = static_cast<ot_file_priority>(
+            static_cast<std::uint8_t>(prio[static_cast<std::size_t>(idx)]));
       } else {
         fe.priority = OT_PRIO_NORMAL;
       }
-      fe.progress = (fe.size > 0) ? static_cast<double>(st.total_wanted_done) / static_cast<double>(st.total_wanted) : 1.0;
+      fe.progress = (fe.size > 0)
+          ? static_cast<double>(st.total_wanted_done) / static_cast<double>(st.total_wanted)
+          : 1.0;
       rec.files.push_back(fe);
     }
   }

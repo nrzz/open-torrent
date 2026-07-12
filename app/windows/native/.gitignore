@@ -1,0 +1,4 @@
+# Place opentorrent_core.dll (and deps) here; Flutter Windows CMake copies them next to the exe.
+# Populate with:  ..\..\scripts\bundle_native_windows.ps1
+*
+!.gitignore

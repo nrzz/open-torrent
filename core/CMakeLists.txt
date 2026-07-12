@@ -5,11 +5,20 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+if(WIN32)
+  add_compile_definitions(_WIN32_WINNT=0x0A00)
+endif()
+
 option(OPENTORRENT_USE_LIBTORRENT "Build against libtorrent-rasterbar" ON)
 option(OPENTORRENT_BUILD_TESTS "Build core unit tests" ON)
-option(OPENTORRENT_BUILD_SHARED "Build shared library" OFF)
+option(OPENTORRENT_BUILD_SHARED "Build shared library (required for Flutter FFI)" ON)
 
-add_library(opentorrent_core
+set(_ot_lib_type STATIC)
+if(OPENTORRENT_BUILD_SHARED)
+  set(_ot_lib_type SHARED)
+endif()
+
+add_library(opentorrent_core ${_ot_lib_type}
   src/session.cpp
   src/c_api.cpp
   src/utils.cpp

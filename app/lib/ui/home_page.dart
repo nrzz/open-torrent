@@ -170,13 +170,27 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           if (c.usingMock)
-            Container(
-              width: double.infinity,
-              color: Theme.of(context).colorScheme.secondaryContainer,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: Text(
-                'Mock engine (${c.engineVersion}). Build core with libtorrent for real transfers.',
-                style: Theme.of(context).textTheme.bodySmall,
+            Material(
+              color: Theme.of(context).colorScheme.errorContainer,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded,
+                        color: Theme.of(context).colorScheme.onErrorContainer),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Mock engine — not transferring real torrents. '
+                        'Build & bundle native core (scripts/build_libtorrent_windows.ps1), '
+                        'then rebuild without OPENTORRENT_MOCK.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.onErrorContainer,
+                            ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           if (c.lastError != null)

@@ -283,13 +283,28 @@ class OpenTorrentNative {
   final ApplySettings applySettings;
 
   static OpenTorrentNative? tryLoad() {
+    final names = Platform.isWindows
+        ? const ['opentorrent_core.dll']
+        : const ['libopentorrent_core.so', 'opentorrent_core.so'];
+
+    final candidates = <String>[];
     try {
-      final lib = Platform.isWindows
-          ? ffi.DynamicLibrary.open('opentorrent_core.dll')
-          : ffi.DynamicLibrary.open('libopentorrent_core.so');
-      return OpenTorrentNative(lib);
-    } catch (_) {
-      return null;
+      final exeDir = File(Platform.resolvedExecutable).parent.path;
+      for (final name in names) {
+        candidates.add('$exeDir${Platform.pathSeparator}$name');
+        candidates.add(
+            '$exeDir${Platform.pathSeparator}native${Platform.pathSeparator}$name');
+      }
+    } catch (_) {}
+    candidates.addAll(names);
+
+    for (final path in candidates) {
+      try {
+        return OpenTorrentNative(ffi.DynamicLibrary.open(path));
+      } catch (_) {
+        // try next
+      }
     }
+    return null;
   }
 }
