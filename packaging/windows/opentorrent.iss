@@ -1,6 +1,6 @@
 ; packaging/windows/opentorrent.iss — Inno Setup installer
 #define MyAppName "OpenTorrent"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.2.0"
 #define MyAppPublisher "OpenTorrent Contributors"
 #define MyAppURL "https://github.com/nrzz/open-torrent"
 #define MyAppExeName "open_torrent.exe"

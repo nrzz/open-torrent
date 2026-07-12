@@ -16,18 +16,18 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-      - name: Build Windows
+      - name: Build Windows (CI portable — mock until vcpkg cached)
         working-directory: app
         run: flutter build windows --release --dart-define=OPENTORRENT_MOCK=true
       - name: Zip Windows portable
         shell: pwsh
         run: |
-          Compress-Archive -Path app/build/windows/x64/runner/Release/* -DestinationPath OpenTorrent-windows-x64.zip
+          Compress-Archive -Path app/build/windows/x64/runner/Release/* -DestinationPath OpenTorrent-windows-x64-ci.zip
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-zip
-          path: OpenTorrent-windows-x64.zip
+          path: OpenTorrent-windows-x64-ci.zip
 
   android:
     runs-on: ubuntu-latest
@@ -43,11 +43,13 @@ jobs:
       - name: Build APK
         working-directory: app
         run: flutter build apk --release --dart-define=OPENTORRENT_MOCK=true
+      - name: Rename APK
+        run: cp app/build/app/outputs/flutter-apk/app-release.apk OpenTorrent-android.apk
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: app/build/app/outputs/flutter-apk/app-release.apk
+          path: OpenTorrent-android.apk
 
   publish:
     needs: [windows, android]
@@ -58,6 +60,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          body: |
+            ## Artifacts
+            - **OpenTorrent-android.apk** — Android release APK
+            - **OpenTorrent-windows-x64-ci.zip** — Windows portable (CI mock engine)
+
+            For the **live libtorrent** Windows build, also attach `OpenTorrent-windows-x64-live.zip` from a machine with `scripts/build_libtorrent_windows.ps1` (see README).
           files: |
-            windows-zip/OpenTorrent-windows-x64.zip
-            android-apk/app-release.apk
+            windows-zip/OpenTorrent-windows-x64-ci.zip
+            android-apk/OpenTorrent-android.apk

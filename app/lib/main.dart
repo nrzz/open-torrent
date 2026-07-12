@@ -104,10 +104,17 @@ class _OpenTorrentAppState extends State<OpenTorrentApp>
     if (!Platform.isAndroid) return;
     final active = torrentController.torrents
         .where((t) => !t.paused && !t.finished)
-        .length;
-    if (active == 0) return;
+        .toList();
+    if (active.isEmpty) return;
+    final progress = (active
+                .map((t) => t.progress)
+                .fold<double>(0, (a, b) => a + b) /
+            active.length *
+            100)
+        .round()
+        .clamp(0, 100);
     try {
-      const android = AndroidNotificationDetails(
+      final android = AndroidNotificationDetails(
         'downloads',
         'Downloads',
         channelDescription: 'Torrent download progress',
@@ -116,13 +123,13 @@ class _OpenTorrentAppState extends State<OpenTorrentApp>
         ongoing: true,
         showProgress: true,
         maxProgress: 100,
-        progress: 0,
+        progress: progress,
       );
       await notifications.show(
         1,
         'OpenTorrent',
-        '$active active download(s)',
-        const NotificationDetails(android: android),
+        '${active.length} active · $progress%',
+        NotificationDetails(android: android),
       );
     } catch (_) {}
   }

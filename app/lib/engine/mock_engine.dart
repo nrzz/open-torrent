@@ -98,6 +98,18 @@ class MockTorrentEngine {
     _torrents[hash] = t.copyWith(sequential: enabled);
   }
 
+  void setCategory(String hash, String category) {
+    final t = _torrents[hash];
+    if (t == null) return;
+    _torrents[hash] = t.copyWith(category: category);
+  }
+
+  void setTags(String hash, List<String> tags) {
+    final t = _torrents[hash];
+    if (t == null) return;
+    _torrents[hash] = t.copyWith(tags: List<String>.from(tags));
+  }
+
   void setFilePriority(String hash, int index, FilePriority priority) {
     final t = _torrents[hash];
     if (t == null || index < 0 || index >= t.files.length) return;

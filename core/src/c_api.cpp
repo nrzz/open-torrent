@@ -181,12 +181,24 @@ ot_error ot_add_magnet(ot_session* session, const char* uri, const char* save_pa
   if (session->settings.sequential_download_default) {
     atp.flags |= lt::torrent_flags::sequential_download;
   }
+  // Prefer returning an existing torrent when the info-hash is already known.
+  if (atp.info_hashes.has_v1()) {
+    const auto key = to_hex_bytes(atp.info_hashes.v1);
+    if (auto* existing = session->find(key)) {
+      copy_cstr(out_info_hash, out_len, existing->info_hash);
+      return OT_OK;
+    }
+  }
   try {
     lt::torrent_handle h = session->lt_session->add_torrent(std::move(atp));
     TorrentRecord rec;
     rec.handle = h;
     rec.info_hash = hash_like(h);
     if (rec.info_hash.empty()) rec.info_hash = make_stub_hash(uri);
+    if (auto* existing = session->find(rec.info_hash)) {
+      copy_cstr(out_info_hash, out_len, existing->info_hash);
+      return OT_OK;
+    }
     rec.save_path = path;
     rec.name = h.status().name.empty() ? "Fetching metadata…" : h.status().name;
     rec.state = OT_STATE_DOWNLOADING_METADATA;
@@ -198,7 +210,21 @@ ot_error ot_add_magnet(ot_session* session, const char* uri, const char* save_pa
     session->push_alert(OT_ALERT_TORRENT_ADDED, rec.info_hash, "magnet added");
     return OT_OK;
   } catch (const std::exception& ex) {
-    session->set_error(ex.what());
+    // libtorrent throws when the torrent is already in the session.
+    const std::string msg = ex.what();
+    if (msg.find("duplicate") != std::string::npos ||
+        msg.find("already") != std::string::npos) {
+      const auto key = make_stub_hash(uri);
+      if (auto* existing = session->find(key)) {
+        copy_cstr(out_info_hash, out_len, existing->info_hash);
+        return OT_OK;
+      }
+      for (auto& [k, rec] : session->torrents) {
+        copy_cstr(out_info_hash, out_len, rec.info_hash);
+        return OT_OK;
+      }
+    }
+    session->set_error(msg);
     return OT_ERR_INTERNAL;
   }
 #else
@@ -518,9 +544,9 @@ int ot_poll_alerts(ot_session* session, ot_alert* out_alerts, int max_alerts) {
 
 const char* ot_version(void) {
 #if OPENTORRENT_HAS_LIBTORRENT
-  return "OpenTorrent/0.1.0 libtorrent";
+  return "OpenTorrent/0.2.0 libtorrent";
 #else
-  return "OpenTorrent/0.1.0 stub";
+  return "OpenTorrent/0.2.0 stub";
 #endif
 }
 

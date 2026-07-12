@@ -24,6 +24,8 @@
 #include <libtorrent/write_resume_data.hpp>
 #include <libtorrent/read_resume_data.hpp>
 #include <libtorrent/hex.hpp>
+#include <libtorrent/ip_filter.hpp>
+#include <libtorrent/address.hpp>
 #endif
 
 struct TorrentRecord {

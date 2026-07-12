@@ -195,7 +195,43 @@ void ot_session::apply_lt_settings() {
     std::snprintf(listen, sizeof(listen), "0.0.0.0:%d,[::]:%d", settings.listen_port, settings.listen_port);
     pack.set_str(lt::settings_pack::listen_interfaces, listen);
   }
+  // UPnP / NAT-PMP for inbound connectivity (qBittorrent-class default).
+  pack.set_bool(lt::settings_pack::enable_upnp, true);
+  pack.set_bool(lt::settings_pack::enable_natpmp, true);
   lt_session->apply_settings(pack);
+
+  if (settings.blocklist_path[0] != '\0') {
+    try {
+      lt::ip_filter filter;
+      std::ifstream in(settings.blocklist_path);
+      if (in) {
+        std::string line;
+        while (std::getline(in, line)) {
+          if (line.empty() || line[0] == '#' || line[0] == ';') continue;
+          // Accept "start - end" or CIDR-less "a.b.c.d - e.f.g.h" (DAT/P2P style).
+          auto dash = line.find('-');
+          if (dash == std::string::npos) continue;
+          auto start = line.substr(0, dash);
+          auto end = line.substr(dash + 1);
+          auto trim = [](std::string& s) {
+            while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.erase(s.begin());
+            while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '\r')) s.pop_back();
+          };
+          trim(start);
+          trim(end);
+          lt::error_code ec1, ec2;
+          auto a = lt::make_address(start, ec1);
+          auto b = lt::make_address(end, ec2);
+          if (!ec1 && !ec2) {
+            filter.add_rule(a, b, lt::ip_filter::blocked);
+          }
+        }
+        lt_session->set_ip_filter(filter);
+      }
+    } catch (...) {
+      // Invalid blocklist must not crash the session.
+    }
+  }
 #endif
 }
 
@@ -209,7 +245,7 @@ ot_session* ot_session_create(const ot_session_settings* settings) {
 
 #if OPENTORRENT_HAS_LIBTORRENT
   lt::settings_pack pack;
-  pack.set_str(lt::settings_pack::user_agent, "OpenTorrent/0.1.0 libtorrent/" LIBTORRENT_VERSION);
+  pack.set_str(lt::settings_pack::user_agent, "OpenTorrent/0.2.0 libtorrent/" LIBTORRENT_VERSION);
   pack.set_bool(lt::settings_pack::enable_dht, true);
   pack.set_bool(lt::settings_pack::enable_lsd, true);
   pack.set_int(lt::settings_pack::alert_mask,

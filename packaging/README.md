@@ -5,17 +5,27 @@ Primary channel: **[GitHub Releases](https://github.com/nrzz/open-torrent/releas
 ## Cutting a release
 
 1. Update [CHANGELOG.md](../CHANGELOG.md) and bump `version` in [`app/pubspec.yaml`](../app/pubspec.yaml).
-2. Commit, then tag and push:
+2. Build artifacts locally (recommended for live Windows):
 
 ```powershell
-git tag v0.1.1
-git push origin v0.1.1
+# Windows live (libtorrent)
+.\scripts\package_release_windows_live.ps1
+
+# Android APK (requires Android SDK)
+cd app
+flutter build apk --release --dart-define=OPENTORRENT_MOCK=true
+copy build\app\outputs\flutter-apk\app-release.apk ..\dist\OpenTorrent-android.apk
 ```
 
-3. The [Release workflow](../.github/workflows/release.yml) builds independently:
-   - `OpenTorrent-windows-x64.zip`
-   - `app-release.apk`  
-   and attaches both to the GitHub Release.
+3. Tag and push, then attach release assets:
+
+```powershell
+git tag v0.2.0
+git push origin v0.2.0
+gh release upload v0.2.0 dist\OpenTorrent-windows-x64-live.zip dist\OpenTorrent-android.apk --clobber
+```
+
+4. The [Release workflow](../.github/workflows/release.yml) also builds CI Windows zip + Android APK on tag push.
 
 ## Windows installer (optional)
 

@@ -10,8 +10,8 @@ Built on [libtorrent-rasterbar](https://libtorrent.org/) with a single [Flutter]
 
 | Platform | Artifact | Notes |
 |----------|----------|--------|
-| Windows | Portable zip / installer | Live libtorrent when native DLLs are bundled; mock only for UI/CI without libtorrent |
-| Android | APK (GitHub Releases / CI) | Foreground service + notifications |
+| Windows | `OpenTorrent-windows-x64-live.zip` | Live libtorrent when built via `scripts/package_release_windows_live.ps1` |
+| Android | `OpenTorrent-android.apk` | Sideload APK; mock engine until NDK libtorrent is bundled |
 
 Latest builds: **[GitHub Releases](https://github.com/nrzz/open-torrent/releases)**
 
@@ -44,7 +44,7 @@ flutter build windows --release
 .\build\windows\x64\runner\Release\open_torrent.exe
 ```
 
-Engine line / About should show `OpenTorrent/0.1.0 libtorrent` — not `mock`. Do **not** pass `OPENTORRENT_MOCK` for live builds.
+Engine line / About should show `OpenTorrent/0.2.0 libtorrent` — not `mock`. Do **not** pass `OPENTORRENT_MOCK` for live builds.
 
 ### UI-only (mock engine — no native libtorrent)
 

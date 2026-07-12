@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented here.
 
+## [0.2.0] — 2026-07-12
+
+### Added
+- Android release APK on GitHub Releases (`OpenTorrent-android.apk`)
+- Windows live libtorrent portable zip packaging (`OpenTorrent-windows-x64-live.zip`)
+- Magnet / `.torrent` deep-link handling on Android (`MainActivity` → Dart)
+- Runtime notification permission request (Android 13+)
+- Download notification progress (%) for active torrents
+- Wi‑Fi-only auto-resume when connectivity returns
+- IP blocklist loader in the native session (P2P `start - end` lines)
+- UPnP / NAT-PMP enabled by default in the live engine
+- `compileSdk 36` for current Flutter Android plugin metadata
+
+### Fixed
+- Android CI APK build failing on AAR `compileSdk` 34 vs plugin requirement 36
+- Mock-by-default confusion: live Windows path documented; release attaches Android APK
+
+### Notes
+- **Windows live:** build with `scripts/build_libtorrent_windows.ps1` (no `OPENTORRENT_MOCK`).
+- **Android:** public APK currently uses the mock engine until `libopentorrent_core.so` + libtorrent NDK are bundled; UI, intents, and FGS are production-shaped.
+
 ## [0.1.0] — 2026-07-12
 
 ### Added

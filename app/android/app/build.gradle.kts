@@ -5,7 +5,8 @@ plugins {
 
 android {
     namespace = "org.opentorrent.open_torrent"
-    compileSdk = flutter.compileSdkVersion
+    // file_picker / flutter_plugin_android_lifecycle require compileSdk 36+
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -17,7 +18,7 @@ android {
     defaultConfig {
         applicationId = "org.opentorrent.open_torrent"
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
@@ -25,6 +26,8 @@ android {
 
     buildTypes {
         release {
+            // Debug keystore for GitHub Releases sideload builds.
+            // Replace with a release keystore + key.properties for store distribution.
             signingConfig = signingConfigs.getByName("debug")
         }
     }
