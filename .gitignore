@@ -50,3 +50,8 @@ app/android/app/libs/
 key.properties
 .env
 .env.*
+
+# Gradle / AGP reports
+app/android/build/
+**/problems-report.html
+
