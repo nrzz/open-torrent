@@ -3,10 +3,10 @@ Categories:
   - Internet
 License: GPL-3.0-or-later
 AuthorName: OpenTorrent Contributors
-WebSite: https://github.com/OWNER/open-torrent
-SourceCode: https://github.com/OWNER/open-torrent
-IssueTracker: https://github.com/OWNER/open-torrent/issues
-Changelog: https://github.com/OWNER/open-torrent/releases
+WebSite: https://github.com/nrzz/open-torrent
+SourceCode: https://github.com/nrzz/open-torrent
+IssueTracker: https://github.com/nrzz/open-torrent/issues
+Changelog: https://github.com/nrzz/open-torrent/releases
 
 AutoName: OpenTorrent
 Summary: Free ad-free BitTorrent client
@@ -15,7 +15,7 @@ Description: |-
   No ads, no telemetry, no paywalls. Built on libtorrent-rasterbar.
 
 RepoType: git
-Repo: https://github.com/OWNER/open-torrent.git
+Repo: https://github.com/nrzz/open-torrent.git
 
 Builds:
   - versionName: 0.1.0

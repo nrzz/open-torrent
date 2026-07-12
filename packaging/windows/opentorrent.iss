@@ -2,7 +2,7 @@
 #define MyAppName "OpenTorrent"
 #define MyAppVersion "0.1.0"
 #define MyAppPublisher "OpenTorrent Contributors"
-#define MyAppURL "https://github.com/opentorrent/open-torrent"
+#define MyAppURL "https://github.com/nrzz/open-torrent"
 #define MyAppExeName "open_torrent.exe"
 
 [Setup]

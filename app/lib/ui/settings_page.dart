@@ -247,17 +247,18 @@ class _SettingsPageState extends State<SettingsPage> {
             subtitle: const Text('Uses GitHub Releases'),
             onTap: () async {
               final checker = UpdateChecker(
-                owner: 'OWNER',
+                owner: 'nrzz',
                 repo: 'open-torrent',
                 currentVersion: '0.1.0',
               );
+              final available = await checker.isUpdateAvailable();
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
-                      checker.owner == 'OWNER'
-                          ? 'Set GitHub OWNER after publishing the repo'
-                          : 'Checking…',
+                      available
+                          ? 'Update available on GitHub Releases'
+                          : 'You are on the latest published version (or no release yet)',
                     ),
                   ),
                 );

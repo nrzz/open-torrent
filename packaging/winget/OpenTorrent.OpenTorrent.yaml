@@ -10,7 +10,7 @@ ShortDescription: Free, ad-free BitTorrent client for Windows
 Installers:
   - Architecture: x64
     InstallerType: inno
-    InstallerUrl: https://github.com/OWNER/open-torrent/releases/download/v0.1.0/OpenTorrent-Setup-0.1.0.exe
+    InstallerUrl: https://github.com/nrzz/open-torrent/releases/download/v0.1.0/OpenTorrent-Setup-0.1.0.exe
     InstallerSha256: REPLACE_AFTER_RELEASE
 ManifestType: singleton
 ManifestVersion: 1.6.0

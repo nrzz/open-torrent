@@ -70,7 +70,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and [core/BUILD.md](core/BUILD.md) for de
 
 ## Downloads
 
-Primary distribution: [GitHub Releases](../../releases). Optional: F-Droid / winget (see `packaging/`).
+Primary distribution: [GitHub Releases](https://github.com/nrzz/open-torrent/releases). Optional: F-Droid / winget (see `packaging/`).
 
 ## License
 
