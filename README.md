@@ -10,7 +10,7 @@ Built on [libtorrent-rasterbar](https://libtorrent.org/) with a single [Flutter]
 
 | Platform | Artifact | Notes |
 |----------|----------|--------|
-| Windows | Portable zip / installer | Mock engine works out of the box; real transfers need libtorrent |
+| Windows | Portable zip / installer | Live libtorrent when native DLLs are bundled; mock only for UI/CI without libtorrent |
 | Android | APK (GitHub Releases / CI) | Foreground service + notifications |
 
 Latest builds: **[GitHub Releases](https://github.com/nrzz/open-torrent/releases)**
@@ -29,36 +29,38 @@ Latest builds: **[GitHub Releases](https://github.com/nrzz/open-torrent/releases
 
 ## Quick start
 
-### Run the UI (mock engine — no native libtorrent required)
+### Live engine (Windows — real BitTorrent)
 
 ```powershell
 git clone https://github.com/nrzz/open-torrent.git
+cd open-torrent
+
+# Build libtorrent + opentorrent_core.dll and copy into app/windows/native/
+.\scripts\build_libtorrent_windows.ps1
+
+cd app
+flutter pub get
+flutter build windows --release
+.\build\windows\x64\runner\Release\open_torrent.exe
+```
+
+Engine line / About should show `OpenTorrent/0.1.0 libtorrent` — not `mock`. Do **not** pass `OPENTORRENT_MOCK` for live builds.
+
+### UI-only (mock engine — no native libtorrent)
+
+```powershell
 cd open-torrent\app
 flutter pub get
 flutter run -d windows --dart-define=OPENTORRENT_MOCK=true
 ```
 
-### Build release binaries
+### Native core tests (stub, no libtorrent)
 
 ```powershell
-# Windows
-flutter build windows --release --dart-define=OPENTORRENT_MOCK=true
-
-# Android APK
-flutter build apk --release --dart-define=OPENTORRENT_MOCK=true
-```
-
-### Native core (optional — real BitTorrent)
-
-```powershell
-# Stub core (tests / no libtorrent)
 cd core
 cmake -B build -S . -G "MinGW Makefiles" -DOPENTORRENT_USE_LIBTORRENT=OFF -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build --output-on-failure
-
-# With libtorrent (MSVC + vcpkg)
-..\scripts\build_libtorrent_windows.ps1
 ```
 
 Full native build notes: [core/BUILD.md](core/BUILD.md)
