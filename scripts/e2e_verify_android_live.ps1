@@ -54,7 +54,8 @@ try {
 }
 
 # Device smoke if adb device present
-$adb = Join-Path $env:ANDROID_HOME 'platform-tools\adb.exe'
+$adbHome = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { 'D:\Android\Sdk' }
+$adb = Join-Path $adbHome 'platform-tools\adb.exe'
 if (-not (Test-Path $adb)) { $adb = 'adb' }
 $devices = $null
 try {

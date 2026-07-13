@@ -1,0 +1,5 @@
+# app/linux/native — place libopentorrent_core.so (+ deps) here via
+# scripts/bundle_native_linux.sh. Files are bundled into the Flutter linux
+# release under lib/ and loaded by absolute path (no bare-name fallback).
+*
+!.gitignore

@@ -4,7 +4,7 @@ import '../engine/models.dart';
 import '../engine/torrent_controller.dart';
 import '../util/format.dart';
 
-class TorrentDetailPage extends StatelessWidget {
+class TorrentDetailPage extends StatefulWidget {
   const TorrentDetailPage({
     super.key,
     required this.controller,
@@ -15,11 +15,23 @@ class TorrentDetailPage extends StatelessWidget {
   final String infoHash;
 
   @override
+  State<TorrentDetailPage> createState() => _TorrentDetailPageState();
+}
+
+class _TorrentDetailPageState extends State<TorrentDetailPage> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.refreshFiles(widget.infoHash);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: controller,
+      animation: widget.controller,
       builder: (context, _) {
-        final matches = controller.torrents.where((e) => e.infoHash == infoHash);
+        final matches =
+            widget.controller.torrents.where((e) => e.infoHash == widget.infoHash);
         final t = matches.isEmpty ? null : matches.first;
         if (t == null) {
           return Scaffold(
@@ -40,16 +52,16 @@ class TorrentDetailPage extends StatelessWidget {
               actions: [
                 IconButton(
                   onPressed: t.paused
-                      ? () => controller.resume(t.infoHash)
-                      : () => controller.pause(t.infoHash),
+                      ? () => widget.controller.resume(t.infoHash)
+                      : () => widget.controller.pause(t.infoHash),
                   icon: Icon(t.paused ? Icons.play_arrow : Icons.pause),
                 ),
               ],
             ),
             body: TabBarView(children: [
               _Overview(t: t),
-              _Files(controller: controller, torrent: t),
-              _Options(controller: controller, torrent: t),
+              _Files(controller: widget.controller, torrent: t),
+              _Options(controller: widget.controller, torrent: t),
             ]),
           ),
         );

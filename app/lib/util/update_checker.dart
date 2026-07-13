@@ -1,9 +1,8 @@
-import 'dart:io';
-
-import 'package:http/http.dart' as http;
 import 'dart:convert';
 
-/// Checks GitHub Releases for a newer version (desktop / optional Android).
+import 'package:http/http.dart' as http;
+
+/// Checks GitHub Releases for a newer version (informational only — no auto-download).
 class UpdateChecker {
   UpdateChecker({
     required this.owner,
@@ -20,10 +19,12 @@ class UpdateChecker {
     final uri = Uri.parse(
       'https://api.github.com/repos/$owner/$repo/releases/latest',
     );
-    final res = await http.get(uri, headers: {
-      'Accept': 'application/vnd.github+json',
-      'User-Agent': 'OpenTorrent/$currentVersion',
-    });
+    final res = await http
+        .get(uri, headers: {
+          'Accept': 'application/vnd.github+json',
+          'User-Agent': 'OpenTorrent/$currentVersion',
+        })
+        .timeout(const Duration(seconds: 15));
     if (res.statusCode != 200) return null;
     final json = jsonDecode(res.body) as Map<String, dynamic>;
     return json['tag_name'] as String?;
@@ -36,5 +37,6 @@ class UpdateChecker {
     return remote != currentVersion && remote.compareTo(currentVersion) > 0;
   }
 
-  static bool get supported => !Platform.isLinux;
+  /// Supported on all desktop + Android; verify downloads via SHA256SUMS on Releases.
+  static bool get supported => true;
 }

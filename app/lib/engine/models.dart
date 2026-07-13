@@ -178,6 +178,7 @@ class SessionSettings {
     this.themeMode = 'system',
     this.locale = 'en',
     this.debugLogging = false,
+    this.allowHttpTorrents = false,
   });
 
   String savePath;
@@ -200,7 +201,10 @@ class SessionSettings {
   String themeMode;
   String locale;
   bool debugLogging;
+  /// When false (default), torrent/RSS HTTP URLs are rejected; HTTPS only.
+  bool allowHttpTorrents;
 
+  /// Persistable settings — proxy credentials intentionally omitted (secure storage).
   Map<String, Object?> toJson() => {
         'savePath': savePath,
         'listenPort': listenPort,
@@ -215,13 +219,12 @@ class SessionSettings {
         'sequentialDefault': sequentialDefault,
         'proxyHost': proxyHost,
         'proxyPort': proxyPort,
-        'proxyUsername': proxyUsername,
-        'proxyPassword': proxyPassword,
         'blocklistPath': blocklistPath,
         'wifiOnly': wifiOnly,
         'themeMode': themeMode,
         'locale': locale,
         'debugLogging': debugLogging,
+        'allowHttpTorrents': allowHttpTorrents,
       };
 
   factory SessionSettings.fromJson(Map<String, Object?> json) {
@@ -239,6 +242,7 @@ class SessionSettings {
     s.sequentialDefault = json['sequentialDefault'] as bool? ?? false;
     s.proxyHost = json['proxyHost'] as String? ?? '';
     s.proxyPort = json['proxyPort'] as int? ?? 0;
+    // Legacy plaintext fields — consumed once during migration, never re-written.
     s.proxyUsername = json['proxyUsername'] as String? ?? '';
     s.proxyPassword = json['proxyPassword'] as String? ?? '';
     s.blocklistPath = json['blocklistPath'] as String? ?? '';
@@ -246,10 +250,16 @@ class SessionSettings {
     s.themeMode = json['themeMode'] as String? ?? 'system';
     s.locale = json['locale'] as String? ?? 'en';
     s.debugLogging = json['debugLogging'] as bool? ?? false;
+    s.allowHttpTorrents = json['allowHttpTorrents'] as bool? ?? false;
     return s;
   }
 
-  SessionSettings copy() => SessionSettings.fromJson(toJson());
+  SessionSettings copy() {
+    final c = SessionSettings.fromJson(toJson());
+    c.proxyUsername = proxyUsername;
+    c.proxyPassword = proxyPassword;
+    return c;
+  }
 }
 
 class RssRule {

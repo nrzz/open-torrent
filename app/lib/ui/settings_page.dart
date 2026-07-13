@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../engine/models.dart';
 import '../engine/torrent_controller.dart';
+import '../util/file_logger.dart';
 import '../util/format.dart';
 import '../util/update_checker.dart';
 
@@ -156,6 +157,37 @@ class _SettingsPageState extends State<SettingsPage> {
             value: _s.proxyPort,
             onChanged: (v) => setState(() => _s.proxyPort = v),
           ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: TextField(
+              decoration: const InputDecoration(labelText: 'Username'),
+              controller: TextEditingController(text: _s.proxyUsername)
+                ..selection =
+                    TextSelection.collapsed(offset: _s.proxyUsername.length),
+              onChanged: (v) => _s.proxyUsername = v,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: TextField(
+              decoration: const InputDecoration(
+                labelText: 'Password',
+                helperText: 'Stored outside session_meta.json (private app file)',
+              ),
+              obscureText: true,
+              controller: TextEditingController(text: _s.proxyPassword)
+                ..selection =
+                    TextSelection.collapsed(offset: _s.proxyPassword.length),
+              onChanged: (v) => _s.proxyPassword = v,
+            ),
+          ),
+          const _Section('Network security'),
+          SwitchListTile(
+            title: const Text('Allow HTTP torrent/RSS URLs'),
+            subtitle: const Text('Off by default — HTTPS only'),
+            value: _s.allowHttpTorrents,
+            onChanged: (v) => setState(() => _s.allowHttpTorrents = v),
+          ),
           const _Section('IP blocklist'),
           ListTile(
             title: const Text('Blocklist file'),
@@ -230,9 +262,42 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           SwitchListTile(
             title: const Text('Debug logging'),
+            subtitle: const Text('Writes opentorrent_debug.log for bug reports'),
             value: _s.debugLogging,
             onChanged: (v) => setState(() => _s.debugLogging = v),
           ),
+          if (widget.controller.debugLogPath != null)
+            ListTile(
+              title: const Text('Debug log path'),
+              subtitle: Text(widget.controller.debugLogPath!),
+              onTap: () async {
+                final tail = await FileLogger.instance.readTail();
+                if (!mounted) return;
+                await showDialog<void>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Debug log (tail)'),
+                    content: SizedBox(
+                      width: double.maxFinite,
+                      child: SingleChildScrollView(
+                        child: Text(
+                          tail?.isNotEmpty == true
+                              ? tail!
+                              : 'Log is empty. Enable debug logging and reproduce the issue.',
+                          style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                        ),
+                      ),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Close'),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
           const _Section('About'),
           ListTile(
             title: const Text('Engine'),
@@ -249,7 +314,7 @@ class _SettingsPageState extends State<SettingsPage> {
               final checker = UpdateChecker(
                 owner: 'nrzz',
                 repo: 'open-torrent',
-                currentVersion: '0.2.1',
+                currentVersion: '0.3.0',
               );
               final available = await checker.isUpdateAvailable();
               if (mounted) {

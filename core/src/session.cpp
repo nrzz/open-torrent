@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -102,6 +103,7 @@ void ot_session::push_alert(ot_alert_type type, const std::string& hash, const s
 
 void ot_session::set_error(const std::string& msg) {
   last_error = msg;
+  std::snprintf(last_error_buf, sizeof(last_error_buf), "%s", msg.c_str());
   if (log_enabled) push_alert(OT_ALERT_LOG, "", msg);
 }
 
@@ -190,7 +192,7 @@ void ot_session::apply_lt_settings() {
     pack.set_str(lt::settings_pack::proxy_password, settings.proxy_password);
     pack.set_int(lt::settings_pack::proxy_type, lt::settings_pack::socks5_pw);
   }
-  if (settings.listen_port > 0) {
+  if (settings.listen_port > 0 && settings.listen_port >= 1024 && settings.listen_port <= 65535) {
     char listen[64];
     std::snprintf(listen, sizeof(listen), "0.0.0.0:%d,[::]:%d", settings.listen_port, settings.listen_port);
     pack.set_str(lt::settings_pack::listen_interfaces, listen);
@@ -238,14 +240,25 @@ void ot_session::apply_lt_settings() {
 ot_session* ot_session_create(const ot_session_settings* settings) {
   auto* session = new ot_session();
   zero_settings(session->settings);
-  if (settings) session->settings = *settings;
+  if (settings) {
+    session->settings = *settings;
+    session->settings.save_path[sizeof(session->settings.save_path) - 1] = '\0';
+    session->settings.proxy_host[sizeof(session->settings.proxy_host) - 1] = '\0';
+    session->settings.proxy_username[sizeof(session->settings.proxy_username) - 1] = '\0';
+    session->settings.proxy_password[sizeof(session->settings.proxy_password) - 1] = '\0';
+    session->settings.blocklist_path[sizeof(session->settings.blocklist_path) - 1] = '\0';
+    if (session->settings.listen_port != 0 &&
+        (session->settings.listen_port < 1024 || session->settings.listen_port > 65535)) {
+      session->settings.listen_port = 6881;
+    }
+  }
   if (session->settings.save_path[0] == '\0') {
     copy_cstr(session->settings.save_path, sizeof(session->settings.save_path), ".");
   }
 
 #if OPENTORRENT_HAS_LIBTORRENT
   lt::settings_pack pack;
-  pack.set_str(lt::settings_pack::user_agent, "OpenTorrent/0.2.1 libtorrent/" LIBTORRENT_VERSION);
+  pack.set_str(lt::settings_pack::user_agent, "OpenTorrent/0.3.0 libtorrent/" LIBTORRENT_VERSION);
   pack.set_bool(lt::settings_pack::enable_dht, true);
   pack.set_bool(lt::settings_pack::enable_lsd, true);
   pack.set_int(lt::settings_pack::alert_mask,
@@ -261,6 +274,21 @@ ot_session* ot_session_create(const ot_session_settings* settings) {
 
 void ot_session_destroy(ot_session* session) {
   if (!session) return;
+  std::string resume_copy;
+  {
+    std::lock_guard<std::mutex> lock(session->mutex);
+    if (session->destroyed) return;
+    session->destroyed = true;
+    resume_copy = session->resume_dir;
+  }
+  // Best-effort resume flush before tearing down (Dart should also call save first).
+  if (!resume_copy.empty()) {
+    ot_session_save_resume(session);
+    ot_alert sink[64];
+    for (int i = 0; i < 8; ++i) {
+      if (ot_poll_alerts(session, sink, 64) == 0) break;
+    }
+  }
   {
     std::lock_guard<std::mutex> lock(session->mutex);
 #if OPENTORRENT_HAS_LIBTORRENT

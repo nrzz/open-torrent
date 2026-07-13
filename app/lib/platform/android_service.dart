@@ -35,12 +35,13 @@ class AndroidDownloadService {
       if (!controller.settings.wifiOnly) return;
       final wifi = results.contains(ConnectivityResult.wifi);
       if (!wifi) {
-        for (final t in controller.torrents) {
-          if (!t.paused) controller.pause(t.infoHash);
+        for (final t in List.of(controller.torrents)) {
+          if (!t.paused) await controller.pause(t.infoHash);
         }
+        await controller.saveResume();
       } else {
-        for (final t in controller.torrents) {
-          if (t.paused && !t.finished) controller.resume(t.infoHash);
+        for (final t in List.of(controller.torrents)) {
+          if (t.paused && !t.finished) await controller.resume(t.infoHash);
         }
       }
     });
@@ -69,17 +70,27 @@ class AndroidDownloadService {
       TorrentController controller, String uri) async {
     try {
       final trimmed = uri.trim();
+      if (trimmed.isEmpty || trimmed.length > 8192) {
+        controller.reportError('Rejected incoming link (empty or too long)');
+        return;
+      }
       if (trimmed.startsWith('magnet:') || trimmed.contains('xt=urn:btih:')) {
         await controller.addMagnet(trimmed);
       } else if (trimmed.startsWith('http://') ||
           trimmed.startsWith('https://')) {
         await controller.addTorrentUrl(trimmed);
-      } else if (trimmed.startsWith('file:') || trimmed.endsWith('.torrent')) {
+      } else if (trimmed.startsWith('content:') ||
+          trimmed.startsWith('file:') ||
+          trimmed.endsWith('.torrent')) {
         final path = trimmed.startsWith('file:')
             ? Uri.parse(trimmed).toFilePath()
             : trimmed;
         await controller.addTorrentFile(path);
+      } else {
+        controller.reportError('Rejected unsupported incoming URI scheme');
       }
-    } catch (_) {}
+    } catch (e) {
+      controller.reportError('Failed to open incoming link: $e');
+    }
   }
 }

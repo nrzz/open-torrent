@@ -58,7 +58,10 @@ struct ot_session {
   std::mutex mutex;
   ot_session_settings settings{};
   std::string last_error;
+  /** Thread-safe snapshot for ot_last_error(); updated under mutex. */
+  char last_error_buf[1024] = {};
   int log_enabled = 0;
+  bool destroyed = false;
   std::deque<ot_alert> alerts;
   std::unordered_map<std::string, TorrentRecord> torrents;
   std::vector<std::string> order;

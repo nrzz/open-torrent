@@ -35,7 +35,10 @@ class _HomePageState extends State<HomePage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$e')),
+          SnackBar(
+            content: Text('$e'),
+            action: SnackBarAction(label: 'Dismiss', onPressed: () {}),
+          ),
         );
       }
     }
@@ -49,9 +52,19 @@ class _HomePageState extends State<HomePage> {
     if (result == null || result.files.single.path == null) return;
     try {
       await c.addTorrentFile(result.files.single.path!);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Torrent added')),
+        );
+      }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$e'),
+            action: SnackBarAction(label: 'Dismiss', onPressed: () {}),
+          ),
+        );
       }
     }
   }
@@ -61,9 +74,19 @@ class _HomePageState extends State<HomePage> {
     if (url == null || url.trim().isEmpty) return;
     try {
       await c.addTorrentUrl(url.trim());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Torrent added')),
+        );
+      }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$e'),
+            action: SnackBarAction(label: 'Dismiss', onPressed: () {}),
+          ),
+        );
       }
     }
   }
@@ -122,38 +145,46 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          final choice = await showModalBottomSheet<String>(
-            context: context,
-            builder: (ctx) => SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.link),
-                    title: const Text('Magnet link'),
-                    onTap: () => Navigator.pop(ctx, 'magnet'),
+        onPressed: c.busy
+            ? null
+            : () async {
+                final choice = await showModalBottomSheet<String>(
+                  context: context,
+                  builder: (ctx) => SafeArea(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.link),
+                          title: const Text('Magnet link'),
+                          onTap: () => Navigator.pop(ctx, 'magnet'),
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.insert_drive_file_outlined),
+                          title: const Text('Torrent file'),
+                          onTap: () => Navigator.pop(ctx, 'file'),
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.http),
+                          title: const Text('URL'),
+                          onTap: () => Navigator.pop(ctx, 'url'),
+                        ),
+                      ],
+                    ),
                   ),
-                  ListTile(
-                    leading: const Icon(Icons.insert_drive_file_outlined),
-                    title: const Text('Torrent file'),
-                    onTap: () => Navigator.pop(ctx, 'file'),
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.http),
-                    title: const Text('URL'),
-                    onTap: () => Navigator.pop(ctx, 'url'),
-                  ),
-                ],
-              ),
-            ),
-          );
-          if (choice == 'magnet') await _addMagnet();
-          if (choice == 'file') await _addFile();
-          if (choice == 'url') await _addUrl();
-        },
-        icon: const Icon(Icons.add),
-        label: const Text('Add'),
+                );
+                if (choice == 'magnet') await _addMagnet();
+                if (choice == 'file') await _addFile();
+                if (choice == 'url') await _addUrl();
+              },
+        icon: c.busy
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.add),
+        label: Text(c.busy ? 'Adding…' : 'Add'),
       ),
       body: Column(
         children: [
@@ -195,13 +226,32 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           if (c.lastError != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(c.lastError!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            Material(
+              color: Theme.of(context).colorScheme.errorContainer,
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.error_outline,
+                    color: Theme.of(context).colorScheme.onErrorContainer),
+                title: Text(
+                  c.lastError!,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                  ),
+                ),
+                trailing: IconButton(
+                  tooltip: 'Dismiss',
+                  onPressed: c.clearError,
+                  icon: Icon(Icons.close,
+                      color: Theme.of(context).colorScheme.onErrorContainer),
+                ),
+              ),
             ),
           Expanded(
             child: items.isEmpty
-                ? const _EmptyState()
+                ? _EmptyState(
+                    hasTorrents: c.torrents.isNotEmpty,
+                    filter: _filter,
+                  )
                 : ListView.separated(
                     padding: const EdgeInsets.only(bottom: 88),
                     itemCount: items.length,
@@ -225,7 +275,8 @@ class _HomePageState extends State<HomePage> {
                             context: context,
                             builder: (ctx) => AlertDialog(
                               title: const Text('Remove torrent?'),
-                              content: const Text('Remove from session. Optionally delete files.'),
+                              content: const Text(
+                                  'Remove from session. Optionally delete files.'),
                               actions: [
                                 TextButton(
                                   onPressed: () => Navigator.pop(ctx, false),
@@ -261,26 +312,35 @@ class _HomePageState extends State<HomePage> {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState();
+  const _EmptyState({required this.hasTorrents, required this.filter});
+
+  final bool hasTorrents;
+  final String filter;
 
   @override
   Widget build(BuildContext context) {
+    final filtered = hasTorrents && filter.isNotEmpty;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.cloud_download_outlined,
-                size: 64, color: Theme.of(context).colorScheme.outline),
+            Icon(
+              filtered ? Icons.search_off : Icons.cloud_download_outlined,
+              size: 64,
+              color: Theme.of(context).colorScheme.outline,
+            ),
             const SizedBox(height: 16),
             Text(
-              'No torrents yet',
+              filtered ? 'No matching torrents' : 'No torrents yet',
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 8),
             Text(
-              'Add a magnet link or .torrent file to start downloading.',
+              filtered
+                  ? 'Nothing matches “$filter”. Clear the filter to see all torrents.'
+                  : 'Add a magnet link or .torrent file to start downloading.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,

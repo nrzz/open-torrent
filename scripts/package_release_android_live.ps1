@@ -7,7 +7,7 @@ $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
 
 $so = Join-Path $Root 'app\android\app\src\main\jniLibs\arm64-v8a\libopentorrent_core.so'
 if (-not (Test-Path $so)) {
-  throw "Missing $so — run .\scripts\build_libtorrent_android.ps1 first"
+  throw "Missing $so - run .\scripts\build_libtorrent_android.ps1 first"
 }
 
 Push-Location (Join-Path $Root 'app')
@@ -30,7 +30,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::OpenRead($out)
 try {
   $entry = $zip.Entries | Where-Object { $_.FullName -like 'lib/*/libopentorrent_core.so' } | Select-Object -First 1
-  if (-not $entry) { throw 'APK missing libopentorrent_core.so — native engine not packaged' }
+  if (-not $entry) { throw 'APK missing libopentorrent_core.so - native engine not packaged' }
   Write-Host "Packaged native: $($entry.FullName) ($($entry.Length) bytes)"
 } finally {
   $zip.Dispose()

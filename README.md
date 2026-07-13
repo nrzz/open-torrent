@@ -1,6 +1,6 @@
 # OpenTorrent
 
-Free, ad-free, open-source BitTorrent client for **Android** and **Windows**.
+Free, ad-free, open-source BitTorrent client for **Android**, **Windows**, and **Linux**.
 
 Built on [libtorrent-rasterbar](https://libtorrent.org/) with a single [Flutter](https://flutter.dev/) UI. No ads, no telemetry, no paywalls. Licensed under **GPLv3**.
 
@@ -12,8 +12,17 @@ Built on [libtorrent-rasterbar](https://libtorrent.org/) with a single [Flutter]
 |----------|----------|--------|
 | Windows | `OpenTorrent-windows-x64-live.zip` | Live libtorrent (`scripts/package_release_windows_live.ps1`) |
 | Android | `OpenTorrent-android-live.apk` | Live libtorrent arm64 (`scripts/build_libtorrent_android.ps1`) |
+| Linux | `OpenTorrent-linux-x64-*.tar.gz` / `.deb` | `scripts/package_release_linux.sh` |
 
-Latest builds: **[GitHub Releases](https://github.com/nrzz/open-torrent/releases)**
+Latest builds: **[GitHub Releases](https://github.com/nrzz/open-torrent/releases)** — always verify `SHA256SUMS.txt`.
+
+## Security (v0.3.0+)
+
+- Hardened native C ABI + compiler flags (CFG / stack protector / RELRO)
+- Absolute-path native library loading (anti DLL hijacking)
+- HTTPS-first downloads, SSRF guards on RSS, size-capped HTTP
+- Proxy passwords in OS secure storage (not plaintext JSON)
+- Android: no cleartext, no backup of settings, validated intents
 
 ## Features
 
@@ -26,6 +35,7 @@ Latest builds: **[GitHub Releases](https://github.com/nrzz/open-torrent/releases
 - RSS auto-download with filters; categories and tags
 - Android foreground downloads + notifications; Wi‑Fi-only option
 - Windows tray, magnet / `.torrent` association, Inno Setup + portable zip
+- Linux `.desktop` magnet / `.torrent` association
 
 ## Quick start
 
@@ -44,7 +54,7 @@ flutter build windows --release
 .\build\windows\x64\runner\Release\open_torrent.exe
 ```
 
-Engine line / About should show `OpenTorrent/0.2.1 libtorrent` — not `mock`. Do **not** pass `OPENTORRENT_MOCK` for live builds.
+Engine line / About should show `OpenTorrent/0.3.0 libtorrent` — not `mock`. Do **not** pass `OPENTORRENT_MOCK` for live builds.
 
 ### Live engine (Android)
 
@@ -53,6 +63,15 @@ Engine line / About should show `OpenTorrent/0.2.1 libtorrent` — not `mock`. D
 .\scripts\package_release_android_live.ps1
 # APK: dist\OpenTorrent-android-live.apk
 # Requires Android 9+ (API 28), arm64 devices
+```
+
+### Live engine (Linux)
+
+```bash
+./scripts/build_libtorrent_linux.sh
+./scripts/bundle_native_linux.sh
+./scripts/package_release_linux.sh
+# Artifacts under dist/
 ```
 
 ### UI-only (mock engine — no native libtorrent)
@@ -67,7 +86,7 @@ flutter run -d windows --dart-define=OPENTORRENT_MOCK=true
 
 ```powershell
 cd core
-cmake -B build -S . -G "MinGW Makefiles" -DOPENTORRENT_USE_LIBTORRENT=OFF -DCMAKE_BUILD_TYPE=Release
+cmake -B build -S . -DOPENTORRENT_USE_LIBTORRENT=OFF -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
@@ -77,10 +96,10 @@ Full native build notes: [core/BUILD.md](core/BUILD.md)
 ## Repository layout
 
 ```text
-app/           Flutter UI (Android + Windows)
+app/           Flutter UI (Android + Windows + Linux)
 core/          C API around libtorrent (+ stub fallback)
-scripts/       libtorrent / NDK build helpers
-packaging/     Inno Setup, winget, F-Droid metadata
+scripts/       libtorrent / NDK / Linux build helpers
+packaging/     Inno Setup, winget, Linux .desktop, F-Droid metadata
 docs/          Architecture and design notes
 .github/       CI, release workflows, issue templates
 ```
@@ -100,7 +119,7 @@ docs/          Architecture and design notes
 
 - Flutter 3.22+
 - CMake 3.20+ and a C++17 toolchain (MSVC Build Tools recommended on Windows)
-- Android SDK (for APK)
+- Android SDK (for APK); Linux: GTK3 + clang
 - [vcpkg](https://vcpkg.io/) when linking real libtorrent
 - Windows: enable [Developer Mode](ms-settings:developers) for Flutter plugin symlinks
 

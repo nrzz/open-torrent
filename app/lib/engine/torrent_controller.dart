@@ -11,13 +11,20 @@ import 'package:path_provider/path_provider.dart';
 import 'mock_engine.dart';
 import 'models.dart';
 import 'opentorrent_bindings.dart';
+import '../util/file_logger.dart';
+import '../util/hardened_http.dart';
 import '../util/magnet_validator.dart';
+import '../util/secure_credentials.dart';
+import '../util/ssrf_guard.dart';
 
 bool get forceMockEngine =>
     const bool.fromEnvironment('OPENTORRENT_MOCK', defaultValue: false);
 
 class TorrentController extends ChangeNotifier {
-  TorrentController();
+  TorrentController({SecureCredentials? credentials})
+      : _creds = credentials ?? SecureCredentials();
+
+  final SecureCredentials _creds;
 
   SessionSettings settings = SessionSettings();
   SchedulerWindow scheduler = SchedulerWindow();
@@ -25,6 +32,7 @@ class TorrentController extends ChangeNotifier {
   List<TorrentItem> torrents = [];
   String? lastError;
   bool ready = false;
+  bool busy = false;
   bool usingMock = true;
   String engineVersion = 'mock';
 
@@ -32,18 +40,27 @@ class TorrentController extends ChangeNotifier {
   ffi.Pointer<ffi.Void>? _session;
   MockTorrentEngine? _mock;
   Timer? _poll;
+  Timer? _alertTimer;
   Timer? _resumeTimer;
   Timer? _schedulerTimer;
   String _resumeDir = '';
   String _metaPath = '';
+  String _supportDir = '';
+  bool _refreshing = false;
 
   Future<void> init() async {
     final support = await getApplicationSupportDirectory();
+    _supportDir = support.path;
     _resumeDir = p.join(support.path, 'resume');
     _metaPath = p.join(support.path, 'session_meta.json');
     await Directory(_resumeDir).create(recursive: true);
 
     await _loadMeta();
+    await _migrateAndLoadCredentials();
+    await FileLogger.instance.configure(
+      support.path,
+      enabled: settings.debugLogging,
+    );
     if (settings.savePath.isEmpty) {
       final downloads = await getDownloadsDirectory();
       settings.savePath =
@@ -62,19 +79,26 @@ class TorrentController extends ChangeNotifier {
       _session = _native!.sessionCreate(settingsPtr);
       calloc.free(settingsPtr);
       engineVersion = _native!.version().cast<Utf8>().toDartString();
+      _native!.setLogEnabled(_session!, settings.debugLogging ? 1 : 0);
       final resumePtr = _resumeDir.toNativeUtf8();
       _native!.loadResumeDir(_session!, resumePtr.cast());
       malloc.free(resumePtr);
+      await FileLogger.instance.log('session started: $engineVersion');
     } else {
       usingMock = true;
       _mock = MockTorrentEngine(settings)..start();
-      engineVersion = 'OpenTorrent/0.2.1 mock';
+      engineVersion = 'OpenTorrent/0.3.0 mock';
       await _loadMockResume();
+      await FileLogger.instance.log('session started: mock');
     }
 
     ready = true;
     _refresh();
-    _poll = Timer.periodic(const Duration(milliseconds: 800), (_) => _refresh());
+    // Status poll (no file list) — keep UI smooth with many torrents.
+    _poll = Timer.periodic(const Duration(seconds: 1), (_) => _refresh());
+    // Alerts drained more often so resume/error events are not delayed.
+    _alertTimer =
+        Timer.periodic(const Duration(milliseconds: 400), (_) => _drainAlerts());
     _resumeTimer =
         Timer.periodic(const Duration(seconds: 30), (_) => saveResume());
     _schedulerTimer =
@@ -85,6 +109,7 @@ class TorrentController extends ChangeNotifier {
   Future<void> disposeController() async {
     await saveResume();
     _poll?.cancel();
+    _alertTimer?.cancel();
     _resumeTimer?.cancel();
     _schedulerTimer?.cancel();
     _mock?.dispose();
@@ -94,81 +119,110 @@ class TorrentController extends ChangeNotifier {
     }
   }
 
+  void clearError() {
+    if (lastError == null) return;
+    lastError = null;
+    notifyListeners();
+  }
+
+  void reportError(String message) {
+    lastError = message;
+    notifyListeners();
+  }
+
+  String? get debugLogPath => FileLogger.instance.path;
+
   Future<String> addMagnet(String uri, {String? savePath}) async {
     lastError = null;
-    final trimmed = uri.trim();
-    if (!MagnetValidator.isValid(trimmed)) {
-      lastError = trimmed.isEmpty
-          ? 'Magnet link is empty'
-          : 'Invalid magnet link (expected magnet:?xt=urn:btih:...)';
-      notifyListeners();
-      throw ArgumentError(lastError);
-    }
-    final magnetUri = MagnetValidator.normalize(trimmed);
-    final path = savePath ?? settings.savePath;
-    if (path.trim().isEmpty) {
-      lastError = 'Save path is not set';
-      notifyListeners();
-      throw StateError(lastError!);
-    }
-    if (usingMock) {
-      final hash = _mock!.addMagnet(magnetUri, path);
+    busy = true;
+    notifyListeners();
+    try {
+      final trimmed = uri.trim();
+      if (!MagnetValidator.isValid(trimmed)) {
+        lastError = trimmed.isEmpty
+            ? 'Magnet link is empty'
+            : 'Invalid magnet link (expected magnet:?xt=urn:btih:...)';
+        notifyListeners();
+        throw ArgumentError(lastError);
+      }
+      final magnetUri = MagnetValidator.normalize(trimmed);
+      final path = savePath ?? settings.savePath;
+      if (path.trim().isEmpty) {
+        lastError = 'Save path is not set';
+        notifyListeners();
+        throw StateError(lastError!);
+      }
+      if (usingMock) {
+        final hash = _mock!.addMagnet(magnetUri, path);
+        _refresh();
+        return hash;
+      }
+      final uriPtr = magnetUri.toNativeUtf8();
+      final pathPtr = path.toNativeUtf8();
+      final out = calloc<ffi.Char>(64);
+      final code = _native!.addMagnet(
+          _session!, uriPtr.cast(), pathPtr.cast(), out, 64);
+      final hash = out.cast<Utf8>().toDartString();
+      malloc.free(uriPtr);
+      malloc.free(pathPtr);
+      calloc.free(out);
+      if (code != 0) {
+        lastError = _nativeError('Failed to add magnet (code $code)');
+        await FileLogger.instance.log('addMagnet failed: $lastError');
+        notifyListeners();
+        throw StateError(lastError!);
+      }
       _refresh();
       return hash;
-    }
-    final uriPtr = magnetUri.toNativeUtf8();
-    final pathPtr = path.toNativeUtf8();
-    final out = calloc<ffi.Char>(64);
-    final code = _native!.addMagnet(
-        _session!, uriPtr.cast(), pathPtr.cast(), out, 64);
-    final hash = out.cast<Utf8>().toDartString();
-    malloc.free(uriPtr);
-    malloc.free(pathPtr);
-    calloc.free(out);
-    if (code != 0) {
-      lastError = 'Failed to add magnet (code $code)';
+    } finally {
+      busy = false;
       notifyListeners();
-      throw StateError(lastError!);
     }
-    _refresh();
-    return hash;
   }
 
   Future<String> addTorrentFile(String filePath, {String? savePath}) async {
     lastError = null;
-    final trimmed = filePath.trim();
-    if (trimmed.isEmpty) {
-      lastError = 'Torrent path is empty';
-      notifyListeners();
-      throw ArgumentError(lastError);
-    }
-    if (!File(trimmed).existsSync()) {
-      lastError = 'Torrent file not found: $trimmed';
-      notifyListeners();
-      throw ArgumentError(lastError);
-    }
-    final path = savePath ?? settings.savePath;
-    if (usingMock) {
-      final hash = _mock!.addTorrentPath(trimmed, path);
+    busy = true;
+    notifyListeners();
+    try {
+      final trimmed = filePath.trim();
+      if (trimmed.isEmpty) {
+        lastError = 'Torrent path is empty';
+        notifyListeners();
+        throw ArgumentError(lastError);
+      }
+      if (!File(trimmed).existsSync()) {
+        lastError = 'Torrent file not found: $trimmed';
+        notifyListeners();
+        throw ArgumentError(lastError);
+      }
+      final path = savePath ?? settings.savePath;
+      if (usingMock) {
+        final hash = _mock!.addTorrentPath(trimmed, path);
+        _refresh();
+        return hash;
+      }
+      final filePtr = trimmed.toNativeUtf8();
+      final pathPtr = path.toNativeUtf8();
+      final out = calloc<ffi.Char>(64);
+      final code = _native!.addTorrentFile(
+          _session!, filePtr.cast(), pathPtr.cast(), out, 64);
+      final hash = out.cast<Utf8>().toDartString();
+      malloc.free(filePtr);
+      malloc.free(pathPtr);
+      calloc.free(out);
+      if (code != 0) {
+        lastError = _nativeError('Failed to add torrent file (code $code)');
+        await FileLogger.instance.log('addTorrentFile failed: $lastError');
+        notifyListeners();
+        throw StateError(lastError!);
+      }
       _refresh();
       return hash;
-    }
-    final filePtr = trimmed.toNativeUtf8();
-    final pathPtr = path.toNativeUtf8();
-    final out = calloc<ffi.Char>(64);
-    final code = _native!.addTorrentFile(
-        _session!, filePtr.cast(), pathPtr.cast(), out, 64);
-    final hash = out.cast<Utf8>().toDartString();
-    malloc.free(filePtr);
-    malloc.free(pathPtr);
-    calloc.free(out);
-    if (code != 0) {
-      lastError = 'Failed to add torrent file (code $code)';
+    } finally {
+      busy = false;
       notifyListeners();
-      throw StateError(lastError!);
     }
-    _refresh();
-    return hash;
   }
 
   Future<String> addTorrentUrl(String url, {String? savePath}) async {
@@ -189,22 +243,18 @@ class TorrentController extends ChangeNotifier {
       notifyListeners();
       throw ArgumentError(lastError);
     }
-    if (parsed.scheme != 'http' && parsed.scheme != 'https') {
-      lastError = 'URL must be http(s) or magnet';
-      notifyListeners();
-      throw ArgumentError(lastError);
-    }
-    final client = HttpClient();
     try {
-      final req = await client.getUrl(parsed);
-      final res = await req.close().timeout(const Duration(seconds: 30));
-      if (res.statusCode >= 400) {
-        throw StateError('HTTP ${res.statusCode}');
-      }
-      final bytes = await consolidateHttpClientResponseBytes(res)
-          .timeout(const Duration(seconds: 60));
+      await SsrfGuard.assertSafeResolved(
+        parsed,
+        allowHttp: settings.allowHttpTorrents,
+      );
+      final http = HardenedHttp(allowHttp: settings.allowHttpTorrents);
+      final bytes = await http.getBytes(parsed);
       if (bytes.isEmpty) {
         throw StateError('Empty torrent response');
+      }
+      if (!HardenedHttp.looksLikeTorrent(bytes)) {
+        throw StateError('Response is not a valid .torrent (bencode)');
       }
       final tmp = File(p.join(
           _resumeDir, 'url_${DateTime.now().millisecondsSinceEpoch}.torrent'));
@@ -218,40 +268,57 @@ class TorrentController extends ChangeNotifier {
       lastError = 'Failed to add torrent URL: $e';
       notifyListeners();
       rethrow;
-    } finally {
-      client.close(force: true);
     }
   }
 
-  void pause(String hash) {
+  Future<void> pause(String hash) async {
     if (usingMock) {
       _mock!.pause(hash);
     } else {
       final ptr = hash.toNativeUtf8();
-      _native!.pause(_session!, ptr.cast());
+      final code = _native!.pause(_session!, ptr.cast());
       malloc.free(ptr);
+      if (code != 0) {
+        lastError = _nativeError('Failed to pause torrent (code $code)');
+        notifyListeners();
+        return;
+      }
+      await saveResume();
     }
     _refresh();
   }
 
-  void resume(String hash) {
+  Future<void> resume(String hash) async {
     if (usingMock) {
       _mock!.resume(hash);
     } else {
       final ptr = hash.toNativeUtf8();
-      _native!.resume(_session!, ptr.cast());
+      final code = _native!.resume(_session!, ptr.cast());
       malloc.free(ptr);
+      if (code != 0) {
+        lastError = _nativeError('Failed to resume torrent (code $code)');
+        notifyListeners();
+        return;
+      }
     }
     _refresh();
   }
 
-  void remove(String hash, {bool deleteFiles = false}) {
+  Future<void> remove(String hash, {bool deleteFiles = false}) async {
     if (usingMock) {
       _mock!.remove(hash, deleteFiles: deleteFiles);
     } else {
+      await saveResume();
       final ptr = hash.toNativeUtf8();
-      _native!.remove(_session!, ptr.cast(), deleteFiles ? 1 : 0);
+      final code =
+          _native!.remove(_session!, ptr.cast(), deleteFiles ? 1 : 0);
       malloc.free(ptr);
+      if (code != 0) {
+        lastError = _nativeError('Failed to remove torrent (code $code)');
+        notifyListeners();
+        return;
+      }
+      await saveResume();
     }
     _refresh();
   }
@@ -272,9 +339,21 @@ class TorrentController extends ChangeNotifier {
       _mock!.setFilePriority(hash, index, priority);
     } else {
       final ptr = hash.toNativeUtf8();
-      _native!.setFilePriority(
+      final code = _native!.setFilePriority(
           _session!, ptr.cast(), index, priority.nativeValue);
       malloc.free(ptr);
+      if (code != 0) {
+        lastError = _nativeError('Failed to set file priority (code $code)');
+        notifyListeners();
+        return;
+      }
+      // Optimistic UI update until next refreshFiles.
+      final i = torrents.indexWhere((t) => t.infoHash == hash);
+      if (i >= 0 && index >= 0 && index < torrents[i].files.length) {
+        final files = List<FileEntry>.from(torrents[i].files);
+        files[index] = files[index].copyWith(priority: priority);
+        torrents[i] = torrents[i].copyWith(files: files);
+      }
     }
     _refresh();
   }
@@ -295,13 +374,25 @@ class TorrentController extends ChangeNotifier {
 
   Future<void> applySettings(SessionSettings next) async {
     settings = next;
+    await FileLogger.instance.configure(
+      _supportDir.isEmpty ? settings.savePath : _supportDir,
+      enabled: settings.debugLogging,
+    );
+    await _creds.save(
+      username: settings.proxyUsername,
+      password: settings.proxyPassword,
+    );
     if (usingMock) {
       _mock!.settings = next;
     } else if (_session != null) {
       final ptr = calloc<OtSessionSettings>();
       _writeSettings(ptr.ref);
-      _native!.applySettings(_session!, ptr);
+      final code = _native!.applySettings(_session!, ptr);
       calloc.free(ptr);
+      _native!.setLogEnabled(_session!, settings.debugLogging ? 1 : 0);
+      if (code != 0) {
+        lastError = _nativeError('Failed to apply settings (code $code)');
+      }
     }
     await _saveMeta();
     notifyListeners();
@@ -312,14 +403,39 @@ class TorrentController extends ChangeNotifier {
       final file = File(p.join(_resumeDir, 'mock_resume.json'));
       await file.writeAsString(_mock!.dumpResumeJson());
     } else if (_session != null) {
-      _native!.saveResume(_session!);
-      // Drain alerts so resume files are written.
-      _pollNativeAlerts();
+      final code = _native!.saveResume(_session!);
+      if (code != 0) {
+        lastError = _nativeError('Failed to save resume data (code $code)');
+        await FileLogger.instance.log('saveResume failed: $lastError');
+      }
+      for (var i = 0; i < 12; i++) {
+        final n = _pollNativeAlerts();
+        if (n == 0) break;
+      }
     }
     await _saveMeta();
   }
 
+  /// Fetch file list for one torrent (detail view). List view skips this.
+  Future<void> refreshFiles(String hash) async {
+    if (usingMock || _session == null || _native == null) return;
+    final i = torrents.indexWhere((t) => t.infoHash == hash);
+    if (i < 0) return;
+    final files = _readFiles(hash);
+    torrents[i] = torrents[i].copyWith(files: files);
+    notifyListeners();
+  }
+
   void addRssRule(RssRule rule) {
+    final trimmed = rule.feedUrl.trim();
+    try {
+      final uri = Uri.parse(trimmed);
+      SsrfGuard.assertSafeUrl(uri, allowHttp: true);
+    } catch (e) {
+      lastError = 'Invalid RSS feed URL: $e';
+      notifyListeners();
+      return;
+    }
     rssRules.add(rule);
     _saveMeta();
     notifyListeners();
@@ -332,13 +448,18 @@ class TorrentController extends ChangeNotifier {
   }
 
   Future<void> pollRssFeeds() async {
+    final http = HardenedHttp(
+      allowHttp: settings.allowHttpTorrents,
+      maxBytes: 2 * 1024 * 1024,
+    );
     for (final rule in rssRules.where((r) => r.enabled)) {
       try {
-        final client = HttpClient();
-        final req = await client.getUrl(Uri.parse(rule.feedUrl));
-        final res = await req.close();
-        final body = await res.transform(utf8.decoder).join();
-        client.close(force: true);
+        final uri = Uri.parse(rule.feedUrl);
+        await SsrfGuard.assertSafeResolved(
+          uri,
+          allowHttp: settings.allowHttpTorrents,
+        );
+        final body = await http.getString(uri);
         final magnets = RegExp(r'magnet:\?[^\s"<>]+')
             .allMatches(body)
             .map((m) => m.group(0)!)
@@ -361,79 +482,110 @@ class TorrentController extends ChangeNotifier {
   }
 
   void _refresh() {
-    if (usingMock) {
-      torrents = _mock!.list();
-      notifyListeners();
-      return;
-    }
-    _pollNativeAlerts();
-    final count = _native!.torrentCount(_session!);
-    final next = <TorrentItem>[];
-    for (var i = 0; i < count; i++) {
-      final st = calloc<OtTorrentStatus>();
-      final code = _native!.statusAt(_session!, i, st);
-      if (code == 0) {
-        final hash = _readArray(st.ref.infoHash, 64);
-        final files = <FileEntry>[];
-        final hashPtr = hash.toNativeUtf8();
-        final fc = _native!.fileCount(_session!, hashPtr.cast());
-        for (var f = 0; f < fc; f++) {
-          final fe = calloc<OtFileEntry>();
-          if (_native!.fileAt(_session!, hashPtr.cast(), f, fe) == 0) {
-            files.add(FileEntry(
-              path: _readArray(fe.ref.path, 1024),
-              size: fe.ref.size,
-              priority: FilePriorityX.fromNative(fe.ref.priority),
-              progress: fe.ref.progress,
-            ));
-          }
-          calloc.free(fe);
+    if (_refreshing) return;
+    _refreshing = true;
+    try {
+      if (usingMock) {
+        torrents = _mock!.list();
+        notifyListeners();
+        return;
+      }
+      _drainAlerts();
+      final count = _native!.torrentCount(_session!);
+      final prevByHash = {for (final t in torrents) t.infoHash: t};
+      final next = <TorrentItem>[];
+      for (var i = 0; i < count; i++) {
+        final st = calloc<OtTorrentStatus>();
+        final code = _native!.statusAt(_session!, i, st);
+        if (code == 0) {
+          final hash = _readArray(st.ref.infoHash, 64);
+          final prev = prevByHash[hash];
+          next.add(TorrentItem(
+            infoHash: hash,
+            name: _readArray(st.ref.name, 512),
+            savePath: _readArray(st.ref.savePath, 1024),
+            errorMessage: _readArray(st.ref.errorMessage, 512),
+            state: torrentStateFromInt(st.ref.state),
+            progress: st.ref.progress,
+            totalWanted: st.ref.totalWanted,
+            totalWantedDone: st.ref.totalWantedDone,
+            totalDownload: st.ref.totalDownload,
+            totalUpload: st.ref.totalUpload,
+            downloadRate: st.ref.downloadRate,
+            uploadRate: st.ref.uploadRate,
+            numPeers: st.ref.numPeers,
+            numSeeds: st.ref.numSeeds,
+            queuePosition: st.ref.queuePosition,
+            sequential: st.ref.sequential != 0,
+            paused: st.ref.paused != 0,
+            finished: st.ref.finished != 0,
+            etaSeconds: st.ref.etaSeconds,
+            files: prev?.files ?? const [],
+            category: prev?.category ?? '',
+            tags: prev?.tags ?? const [],
+          ));
         }
-        malloc.free(hashPtr);
-        next.add(TorrentItem(
-          infoHash: hash,
-          name: _readArray(st.ref.name, 512),
-          savePath: _readArray(st.ref.savePath, 1024),
-          errorMessage: _readArray(st.ref.errorMessage, 512),
-          state: torrentStateFromInt(st.ref.state),
-          progress: st.ref.progress,
-          totalWanted: st.ref.totalWanted,
-          totalWantedDone: st.ref.totalWantedDone,
-          totalDownload: st.ref.totalDownload,
-          totalUpload: st.ref.totalUpload,
-          downloadRate: st.ref.downloadRate,
-          uploadRate: st.ref.uploadRate,
-          numPeers: st.ref.numPeers,
-          numSeeds: st.ref.numSeeds,
-          queuePosition: st.ref.queuePosition,
-          sequential: st.ref.sequential != 0,
-          paused: st.ref.paused != 0,
-          finished: st.ref.finished != 0,
-          etaSeconds: st.ref.etaSeconds,
-          files: files,
-        ));
+        calloc.free(st);
       }
-      calloc.free(st);
+      torrents = next;
+      notifyListeners();
+    } finally {
+      _refreshing = false;
     }
-    // Preserve category/tags from previous list
-    for (var i = 0; i < next.length; i++) {
-      final prev = torrents.where((t) => t.infoHash == next[i].infoHash);
-      if (prev.isNotEmpty) {
-        next[i] = next[i].copyWith(
-          category: prev.first.category,
-          tags: prev.first.tags,
-        );
-      }
-    }
-    torrents = next;
-    notifyListeners();
   }
 
-  void _pollNativeAlerts() {
+  void _drainAlerts() {
     if (_native == null || _session == null) return;
+    for (var i = 0; i < 4; i++) {
+      if (_pollNativeAlerts() == 0) break;
+    }
+  }
+
+  List<FileEntry> _readFiles(String hash) {
+    final files = <FileEntry>[];
+    final hashPtr = hash.toNativeUtf8();
+    final fc = _native!.fileCount(_session!, hashPtr.cast());
+    for (var f = 0; f < fc; f++) {
+      final fe = calloc<OtFileEntry>();
+      if (_native!.fileAt(_session!, hashPtr.cast(), f, fe) == 0) {
+        files.add(FileEntry(
+          path: _readArray(fe.ref.path, 1024),
+          size: fe.ref.size,
+          priority: FilePriorityX.fromNative(fe.ref.priority),
+          progress: fe.ref.progress,
+        ));
+      }
+      calloc.free(fe);
+    }
+    malloc.free(hashPtr);
+    return files;
+  }
+
+  /// Returns number of alerts drained.
+  int _pollNativeAlerts() {
+    if (_native == null || _session == null) return 0;
     final buf = calloc<OtAlert>(32);
-    _native!.pollAlerts(_session!, buf, 32);
+    final n = _native!.pollAlerts(_session!, buf, 32);
+    for (var i = 0; i < n; i++) {
+      final alert = buf[i];
+      final msg = _readArray(alert.message, 1024);
+      if (alert.type == 7 /* OT_ALERT_ERROR */ && msg.isNotEmpty) {
+        lastError = msg;
+        FileLogger.instance.log('engine error: $msg');
+      }
+    }
     calloc.free(buf);
+    return n;
+  }
+
+  String _nativeError(String fallback) {
+    if (_native == null || _session == null) return fallback;
+    try {
+      final ptr = _native!.lastError(_session!);
+      final msg = ptr.cast<Utf8>().toDartString();
+      if (msg.isNotEmpty) return msg;
+    } catch (_) {}
+    return fallback;
   }
 
   void _writeSettings(OtSessionSettings ref) {
@@ -489,6 +641,25 @@ class TorrentController extends ChangeNotifier {
         ..addAll(rules.map((e) => RssRule.fromJson(Map<String, Object?>.from(e as Map))));
     } catch (e) {
       lastError = 'Failed to load session meta: $e';
+    }
+  }
+
+  /// Migrate legacy plaintext proxy credentials into secure storage, then scrub disk.
+  Future<void> _migrateAndLoadCredentials() async {
+    try {
+      final legacyUser = settings.proxyUsername;
+      final legacyPass = settings.proxyPassword;
+      if (legacyUser.isNotEmpty || legacyPass.isNotEmpty) {
+        await _creds.save(username: legacyUser, password: legacyPass);
+        settings.proxyUsername = '';
+        settings.proxyPassword = '';
+        await _saveMeta(); // scrub plaintext from disk
+      }
+      final loaded = await _creds.load();
+      settings.proxyUsername = loaded.username;
+      settings.proxyPassword = loaded.password;
+    } catch (e) {
+      await FileLogger.instance.log('credential migration failed: $e');
     }
   }
 

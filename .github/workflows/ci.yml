@@ -5,6 +5,9 @@ on:
     branches: [main, master]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   core-stub:
     runs-on: windows-latest
@@ -19,13 +22,14 @@ jobs:
           cmake --build build --config Release
           ctest --test-dir build --output-on-failure
 
-  flutter:
+  flutter-windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: "3.44.6"
       - name: Pub get
         working-directory: app
         run: flutter pub get
@@ -55,15 +59,45 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: "3.44.6"
       - name: Pub get
         working-directory: app
         run: flutter pub get
       - name: Build APK
         working-directory: app
-        # Mock engine until Android libtorrent .so is bundled in CI.
         run: flutter build apk --release --dart-define=OPENTORRENT_MOCK=true
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
           path: app/build/app/outputs/flutter-apk/app-release.apk
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev
+      - name: Build stub core
+        working-directory: core
+        run: |
+          cmake -B build -S . -DOPENTORRENT_USE_LIBTORRENT=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release -j$(nproc)
+          ctest --test-dir build --output-on-failure
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.44.6"
+      - name: Pub get
+        working-directory: app
+        run: flutter pub get
+      - name: Build Linux (mock)
+        working-directory: app
+        run: flutter build linux --release --dart-define=OPENTORRENT_MOCK=true
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-release
+          path: app/build/linux/x64/release/bundle

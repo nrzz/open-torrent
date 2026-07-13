@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=OpenTorrent
+Comment=Free, ad-free BitTorrent client
+Exec=opentorrent %U
+Icon=opentorrent
+Terminal=false
+Type=Application
+Categories=Network;FileTransfer;
+MimeType=application/x-bittorrent;x-scheme-handler/magnet;
+StartupNotify=true

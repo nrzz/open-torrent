@@ -15,7 +15,7 @@ final notifications = FlutterLocalNotificationsPlugin();
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  if (Platform.isWindows) {
+  if (Platform.isWindows || Platform.isLinux) {
     try {
       await windowManager.ensureInitialized();
       const opts = WindowOptions(
@@ -68,10 +68,11 @@ class OpenTorrentApp extends StatefulWidget {
 }
 
 class _OpenTorrentAppState extends State<OpenTorrentApp>
-    with WindowListener, TrayListener {
+    with WindowListener, TrayListener, WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     torrentController.addListener(_onEngine);
     if (Platform.isWindows) {
       try {
@@ -135,7 +136,18 @@ class _OpenTorrentAppState extends State<OpenTorrentApp>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
+      torrentController.saveResume();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     torrentController.removeListener(_onEngine);
     if (Platform.isWindows) {
       try {

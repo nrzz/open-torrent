@@ -1,4 +1,5 @@
 #include "session.hpp"
+#include "utils.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -14,6 +15,10 @@ namespace {
 void copy_cstr(char* dest, size_t dest_len, const std::string& src) {
   if (dest_len == 0) return;
   std::snprintf(dest, dest_len, "%s", src.c_str());
+}
+
+bool session_usable(ot_session* session) {
+  return session && !session->destroyed;
 }
 
 std::string make_stub_hash(const std::string& seed) {
@@ -54,180 +59,10 @@ ot_torrent_status to_status(const TorrentRecord& rec) {
   return st;
 }
 
-#if OPENTORRENT_HAS_LIBTORRENT
-std::string to_hex_bytes(lt::span<char const> s) {
-  static constexpr char kHex[] = "0123456789abcdef";
-  std::string out;
-  out.resize(static_cast<size_t>(s.size()) * 2);
-  for (int i = 0; i < s.size(); ++i) {
-    auto const b = static_cast<unsigned char>(s[i]);
-    out[static_cast<size_t>(i) * 2] = kHex[b >> 4];
-    out[static_cast<size_t>(i) * 2 + 1] = kHex[b & 0x0f];
-  }
-  return out;
-}
-
-std::string hash_like(const lt::torrent_handle& h) {
-  auto st = h.status();
-  if (st.info_hashes.has_v1()) return to_hex_bytes(st.info_hashes.v1);
-  if (st.info_hashes.has_v2()) return to_hex_bytes(st.info_hashes.get_best());
-  return {};
-}
-#endif
-
-} // namespace
-
-extern "C" {
-
-ot_error ot_session_apply_settings(ot_session* session, const ot_session_settings* settings) {
-  if (!session || !settings) return OT_ERR_INVALID_ARG;
-  std::lock_guard<std::mutex> lock(session->mutex);
-  session->settings = *settings;
-  session->apply_lt_settings();
-  return OT_OK;
-}
-
-ot_error ot_session_get_settings(ot_session* session, ot_session_settings* out_settings) {
-  if (!session || !out_settings) return OT_ERR_INVALID_ARG;
-  std::lock_guard<std::mutex> lock(session->mutex);
-  *out_settings = session->settings;
-  return OT_OK;
-}
-
-ot_error ot_session_load_resume_dir(ot_session* session, const char* resume_dir) {
-  if (!session || !resume_dir) return OT_ERR_INVALID_ARG;
-  std::lock_guard<std::mutex> lock(session->mutex);
-  session->resume_dir = resume_dir;
-  std::error_code ec;
-  if (!fs::exists(resume_dir, ec)) {
-    fs::create_directories(resume_dir, ec);
-    return OT_OK;
-  }
-
-#if OPENTORRENT_HAS_LIBTORRENT
-  for (auto& entry : fs::directory_iterator(resume_dir, ec)) {
-    if (!entry.is_regular_file()) continue;
-    auto path = entry.path();
-    if (path.extension() != ".resume") continue;
-    std::ifstream in(path, std::ios::binary);
-    if (!in) continue;
-    std::string buf((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    try {
-      lt::error_code lec;
-      lt::add_torrent_params atp = lt::read_resume_data(buf, lec);
-      if (lec) continue;
-      if (atp.save_path.empty()) atp.save_path = session->settings.save_path;
-      lt::torrent_handle h = session->lt_session->add_torrent(std::move(atp));
-      TorrentRecord rec;
-      rec.handle = h;
-      rec.info_hash = hash_like(h);
-      rec.save_path = h.status().save_path;
-      rec.name = h.status().name;
-      session->sync_status(rec);
-      session->torrents[rec.info_hash] = rec;
-      session->order.push_back(rec.info_hash);
-      session->push_alert(OT_ALERT_TORRENT_ADDED, rec.info_hash, "loaded resume");
-    } catch (...) {
-      session->set_error("failed to load resume file: " + path.string());
-    }
-  }
-#else
-  (void)ec;
-#endif
-  return OT_OK;
-}
-
-ot_error ot_session_save_resume(ot_session* session) {
-  if (!session) return OT_ERR_INVALID_ARG;
-  std::lock_guard<std::mutex> lock(session->mutex);
-  if (session->resume_dir.empty()) return OT_ERR_INVALID_ARG;
-  std::error_code ec;
-  fs::create_directories(session->resume_dir, ec);
-
-#if OPENTORRENT_HAS_LIBTORRENT
-  for (auto& kv : session->torrents) {
-    auto& rec = kv.second;
-    if (!rec.handle.is_valid()) continue;
-    rec.handle.save_resume_data(lt::torrent_handle::save_info_dict);
-  }
-  // Alerts deliver write_resume_data_alert; also write lightweight markers for stub safety.
-#else
-  for (auto& kv : session->torrents) {
-    auto path = fs::path(session->resume_dir) / (kv.first + ".resume.json");
-    std::ofstream out(path);
-    if (!out) continue;
-    out << "{\"info_hash\":\"" << kv.first << "\",\"name\":\"" << kv.second.name
-        << "\",\"save_path\":\"" << kv.second.save_path << "\"}\n";
-  }
-#endif
-  session->push_alert(OT_ALERT_RESUME_DATA, "", "resume save requested");
-  return OT_OK;
-}
-
-ot_error ot_add_magnet(ot_session* session, const char* uri, const char* save_path,
-                       char* out_info_hash, size_t out_len) {
-  if (!session || !uri || !out_info_hash || out_len == 0) return OT_ERR_INVALID_ARG;
-  std::lock_guard<std::mutex> lock(session->mutex);
+/** Stub magnet add — caller MUST hold session->mutex. */
+ot_error add_magnet_locked(ot_session* session, const char* uri, const char* save_path,
+                           char* out_info_hash, size_t out_len) {
   std::string path = save_path && save_path[0] ? save_path : session->settings.save_path;
-
-#if OPENTORRENT_HAS_LIBTORRENT
-  lt::error_code ec;
-  lt::add_torrent_params atp = lt::parse_magnet_uri(uri, ec);
-  if (ec) {
-    session->set_error(ec.message());
-    return OT_ERR_PARSE;
-  }
-  atp.save_path = path;
-  if (session->settings.sequential_download_default) {
-    atp.flags |= lt::torrent_flags::sequential_download;
-  }
-  // Prefer returning an existing torrent when the info-hash is already known.
-  if (atp.info_hashes.has_v1()) {
-    const auto key = to_hex_bytes(atp.info_hashes.v1);
-    if (auto* existing = session->find(key)) {
-      copy_cstr(out_info_hash, out_len, existing->info_hash);
-      return OT_OK;
-    }
-  }
-  try {
-    lt::torrent_handle h = session->lt_session->add_torrent(std::move(atp));
-    TorrentRecord rec;
-    rec.handle = h;
-    rec.info_hash = hash_like(h);
-    if (rec.info_hash.empty()) rec.info_hash = make_stub_hash(uri);
-    if (auto* existing = session->find(rec.info_hash)) {
-      copy_cstr(out_info_hash, out_len, existing->info_hash);
-      return OT_OK;
-    }
-    rec.save_path = path;
-    rec.name = h.status().name.empty() ? "Fetching metadata…" : h.status().name;
-    rec.state = OT_STATE_DOWNLOADING_METADATA;
-    rec.sequential = session->settings.sequential_download_default;
-    session->sync_status(rec);
-    session->torrents[rec.info_hash] = rec;
-    session->order.push_back(rec.info_hash);
-    copy_cstr(out_info_hash, out_len, rec.info_hash);
-    session->push_alert(OT_ALERT_TORRENT_ADDED, rec.info_hash, "magnet added");
-    return OT_OK;
-  } catch (const std::exception& ex) {
-    // libtorrent throws when the torrent is already in the session.
-    const std::string msg = ex.what();
-    if (msg.find("duplicate") != std::string::npos ||
-        msg.find("already") != std::string::npos) {
-      const auto key = make_stub_hash(uri);
-      if (auto* existing = session->find(key)) {
-        copy_cstr(out_info_hash, out_len, existing->info_hash);
-        return OT_OK;
-      }
-      for (auto& [k, rec] : session->torrents) {
-        copy_cstr(out_info_hash, out_len, rec.info_hash);
-        return OT_OK;
-      }
-    }
-    session->set_error(msg);
-    return OT_ERR_INTERNAL;
-  }
-#else
   TorrentRecord rec;
   rec.info_hash = make_stub_hash(uri);
   auto existing = session->find(rec.info_hash);
@@ -256,13 +91,236 @@ ot_error ot_add_magnet(ot_session* session, const char* uri, const char* save_pa
   copy_cstr(out_info_hash, out_len, rec.info_hash);
   session->push_alert(OT_ALERT_TORRENT_ADDED, rec.info_hash, "magnet added (stub)");
   return OT_OK;
+}
+
+#if OPENTORRENT_HAS_LIBTORRENT
+std::string to_hex_bytes(lt::span<char const> s) {
+  static constexpr char kHex[] = "0123456789abcdef";
+  std::string out;
+  out.resize(static_cast<size_t>(s.size()) * 2);
+  for (int i = 0; i < s.size(); ++i) {
+    auto const b = static_cast<unsigned char>(s[i]);
+    out[static_cast<size_t>(i) * 2] = kHex[b >> 4];
+    out[static_cast<size_t>(i) * 2 + 1] = kHex[b & 0x0f];
+  }
+  return out;
+}
+
+std::string hash_like(const lt::torrent_handle& h) {
+  auto st = h.status();
+  if (st.info_hashes.has_v1()) return to_hex_bytes(st.info_hashes.v1);
+  if (st.info_hashes.has_v2()) return to_hex_bytes(st.info_hashes.get_best());
+  return {};
+}
+#endif
+
+} // namespace
+
+extern "C" {
+
+ot_error ot_session_apply_settings(ot_session* session, const ot_session_settings* settings) {
+  if (!session_usable(session) || !settings) return OT_ERR_INVALID_ARG;
+  ot_session_settings copy = *settings;
+  if (!ot::sanitize_settings(&copy)) {
+    std::lock_guard<std::mutex> lock(session->mutex);
+    if (!session->destroyed) session->set_error("invalid session settings");
+    return OT_ERR_INVALID_ARG;
+  }
+  std::lock_guard<std::mutex> lock(session->mutex);
+  if (session->destroyed) return OT_ERR_INVALID_ARG;
+  session->settings = copy;
+  session->apply_lt_settings();
+  return OT_OK;
+}
+
+ot_error ot_session_get_settings(ot_session* session, ot_session_settings* out_settings) {
+  if (!session_usable(session) || !out_settings) return OT_ERR_INVALID_ARG;
+  std::lock_guard<std::mutex> lock(session->mutex);
+  *out_settings = session->settings;
+  return OT_OK;
+}
+
+ot_error ot_session_load_resume_dir(ot_session* session, const char* resume_dir) {
+  if (!session_usable(session) || !resume_dir) return OT_ERR_INVALID_ARG;
+  if (!ot::cstr_len_ok(resume_dir, ot::kMaxPathLen)) return OT_ERR_INVALID_ARG;
+  const std::string safe_dir = ot::sanitize_path(resume_dir);
+  if (safe_dir.empty()) return OT_ERR_INVALID_ARG;
+
+  std::lock_guard<std::mutex> lock(session->mutex);
+  if (session->destroyed) return OT_ERR_INVALID_ARG;
+  session->resume_dir = safe_dir;
+  std::error_code ec;
+  if (!fs::exists(safe_dir, ec)) {
+    fs::create_directories(safe_dir, ec);
+    return OT_OK;
+  }
+
+  const std::string allowed_root = session->settings.save_path;
+
+#if OPENTORRENT_HAS_LIBTORRENT
+  for (auto& entry : fs::directory_iterator(safe_dir, ec)) {
+    std::error_code sec;
+    if (entry.is_symlink(sec) || sec) continue;
+    if (!entry.is_regular_file(sec) || sec) continue;
+    auto path = entry.path();
+    if (path.extension() != ".resume") continue;
+    std::error_code fec;
+    const auto fsize = entry.file_size(fec);
+    if (fec || fsize > static_cast<uintmax_t>(ot::kMaxResumeFileBytes)) {
+      session->set_error("resume file too large or unreadable: " + path.string());
+      continue;
+    }
+    std::ifstream in(path, std::ios::binary);
+    if (!in) continue;
+    std::string buf;
+    buf.resize(static_cast<size_t>(fsize));
+    in.read(buf.data(), static_cast<std::streamsize>(fsize));
+    if (!in && !in.eof()) continue;
+    buf.resize(static_cast<size_t>(in.gcount()));
+    try {
+      lt::error_code lec;
+      lt::add_torrent_params atp = lt::read_resume_data(buf, lec);
+      if (lec) continue;
+      // Never trust resume save_path outside the configured download root.
+      if (atp.save_path.empty() ||
+          !ot::path_under_root(allowed_root, atp.save_path)) {
+        atp.save_path = allowed_root;
+      }
+      lt::torrent_handle h = session->lt_session->add_torrent(std::move(atp));
+      TorrentRecord rec;
+      rec.handle = h;
+      rec.info_hash = hash_like(h);
+      rec.save_path = h.status().save_path;
+      rec.name = h.status().name;
+      session->sync_status(rec);
+      session->torrents[rec.info_hash] = rec;
+      session->order.push_back(rec.info_hash);
+      session->push_alert(OT_ALERT_TORRENT_ADDED, rec.info_hash, "loaded resume");
+    } catch (...) {
+      session->set_error("failed to load resume file: " + path.string());
+    }
+  }
+#else
+  (void)ec;
+  (void)allowed_root;
+#endif
+  return OT_OK;
+}
+
+ot_error ot_session_save_resume(ot_session* session) {
+  if (!session_usable(session)) return OT_ERR_INVALID_ARG;
+  std::lock_guard<std::mutex> lock(session->mutex);
+  if (session->destroyed) return OT_ERR_INVALID_ARG;
+  if (session->resume_dir.empty()) return OT_ERR_INVALID_ARG;
+  std::error_code ec;
+  fs::create_directories(session->resume_dir, ec);
+
+#if OPENTORRENT_HAS_LIBTORRENT
+  for (auto& kv : session->torrents) {
+    auto& rec = kv.second;
+    if (!rec.handle.is_valid()) continue;
+    rec.handle.save_resume_data(lt::torrent_handle::save_info_dict);
+  }
+#else
+  for (auto& kv : session->torrents) {
+    auto path = fs::path(session->resume_dir) / (kv.first + ".resume.json");
+    std::ofstream out(path);
+    if (!out) continue;
+    out << "{\"info_hash\":\"" << kv.first << "\",\"name\":\"" << kv.second.name
+        << "\",\"save_path\":\"" << kv.second.save_path << "\"}\n";
+  }
+#endif
+  session->push_alert(OT_ALERT_RESUME_DATA, "", "resume save requested");
+  return OT_OK;
+}
+
+ot_error ot_add_magnet(ot_session* session, const char* uri, const char* save_path,
+                       char* out_info_hash, size_t out_len) {
+  if (!session_usable(session) || !uri || !out_info_hash || out_len == 0) return OT_ERR_INVALID_ARG;
+  if (!ot::cstr_len_ok(uri, ot::kMaxMagnetLen)) return OT_ERR_INVALID_ARG;
+  if (save_path && save_path[0] && !ot::cstr_len_ok(save_path, ot::kMaxPathLen)) {
+    return OT_ERR_INVALID_ARG;
+  }
+  if (save_path && save_path[0] && ot::sanitize_path(save_path).empty()) {
+    return OT_ERR_INVALID_ARG;
+  }
+
+  std::lock_guard<std::mutex> lock(session->mutex);
+  if (session->destroyed) return OT_ERR_INVALID_ARG;
+  std::string path = save_path && save_path[0] ? save_path : session->settings.save_path;
+
+#if OPENTORRENT_HAS_LIBTORRENT
+  lt::error_code ec;
+  lt::add_torrent_params atp = lt::parse_magnet_uri(uri, ec);
+  if (ec) {
+    session->set_error(ec.message());
+    return OT_ERR_PARSE;
+  }
+  atp.save_path = path;
+  if (session->settings.sequential_download_default) {
+    atp.flags |= lt::torrent_flags::sequential_download;
+  }
+  if (atp.info_hashes.has_v1()) {
+    const auto key = to_hex_bytes(atp.info_hashes.v1);
+    if (auto* existing = session->find(key)) {
+      copy_cstr(out_info_hash, out_len, existing->info_hash);
+      return OT_OK;
+    }
+  }
+  try {
+    lt::torrent_handle h = session->lt_session->add_torrent(std::move(atp));
+    TorrentRecord rec;
+    rec.handle = h;
+    rec.info_hash = hash_like(h);
+    if (rec.info_hash.empty()) rec.info_hash = make_stub_hash(uri);
+    if (auto* existing = session->find(rec.info_hash)) {
+      copy_cstr(out_info_hash, out_len, existing->info_hash);
+      return OT_OK;
+    }
+    rec.save_path = path;
+    rec.name = h.status().name.empty() ? "Fetching metadata…" : h.status().name;
+    rec.state = OT_STATE_DOWNLOADING_METADATA;
+    rec.sequential = session->settings.sequential_download_default;
+    session->sync_status(rec);
+    session->torrents[rec.info_hash] = rec;
+    session->order.push_back(rec.info_hash);
+    copy_cstr(out_info_hash, out_len, rec.info_hash);
+    session->push_alert(OT_ALERT_TORRENT_ADDED, rec.info_hash, "magnet added");
+    return OT_OK;
+  } catch (const std::exception& ex) {
+    const std::string msg = ex.what();
+    if (msg.find("duplicate") != std::string::npos ||
+        msg.find("already") != std::string::npos) {
+      const auto key = make_stub_hash(uri);
+      if (auto* existing = session->find(key)) {
+        copy_cstr(out_info_hash, out_len, existing->info_hash);
+        return OT_OK;
+      }
+      for (auto& [k, rec] : session->torrents) {
+        copy_cstr(out_info_hash, out_len, rec.info_hash);
+        return OT_OK;
+      }
+    }
+    session->set_error(msg);
+    return OT_ERR_INTERNAL;
+  }
+#else
+  return add_magnet_locked(session, uri, path.c_str(), out_info_hash, out_len);
 #endif
 }
 
 ot_error ot_add_torrent_file(ot_session* session, const char* path, const char* save_path,
                              char* out_info_hash, size_t out_len) {
-  if (!session || !path || !out_info_hash || out_len == 0) return OT_ERR_INVALID_ARG;
+  if (!session_usable(session) || !path || !out_info_hash || out_len == 0) return OT_ERR_INVALID_ARG;
+  if (!ot::cstr_len_ok(path, ot::kMaxPathLen)) return OT_ERR_INVALID_ARG;
+  if (ot::sanitize_path(path).empty()) return OT_ERR_INVALID_ARG;
+  if (save_path && save_path[0] &&
+      (!ot::cstr_len_ok(save_path, ot::kMaxPathLen) || ot::sanitize_path(save_path).empty())) {
+    return OT_ERR_INVALID_ARG;
+  }
+
   std::lock_guard<std::mutex> lock(session->mutex);
+  if (session->destroyed) return OT_ERR_INVALID_ARG;
   std::string sp = save_path && save_path[0] ? save_path : session->settings.save_path;
 
 #if OPENTORRENT_HAS_LIBTORRENT
@@ -288,7 +346,8 @@ ot_error ot_add_torrent_file(ot_session* session, const char* path, const char* 
     return OT_ERR_PARSE;
   }
 #else
-  return ot_add_magnet(session, path, sp.c_str(), out_info_hash, out_len);
+  // Use unlocked helper — mutex already held (avoids stub deadlock).
+  return add_magnet_locked(session, path, sp.c_str(), out_info_hash, out_len);
 #endif
 }
 
@@ -299,8 +358,10 @@ ot_error ot_add_torrent_url(ot_session* session, const char* url, const char* sa
 }
 
 ot_error ot_remove_torrent(ot_session* session, const char* info_hash, int delete_files) {
-  if (!session || !info_hash) return OT_ERR_INVALID_ARG;
+  if (!session_usable(session) || !info_hash) return OT_ERR_INVALID_ARG;
+  if (!ot::is_hex_info_hash(info_hash)) return OT_ERR_INVALID_ARG;
   std::lock_guard<std::mutex> lock(session->mutex);
+  if (session->destroyed) return OT_ERR_INVALID_ARG;
   auto it = session->torrents.find(info_hash);
   if (it == session->torrents.end()) return OT_ERR_NOT_FOUND;
 
@@ -322,8 +383,10 @@ ot_error ot_remove_torrent(ot_session* session, const char* info_hash, int delet
 }
 
 ot_error ot_pause_torrent(ot_session* session, const char* info_hash) {
-  if (!session || !info_hash) return OT_ERR_INVALID_ARG;
+  if (!session_usable(session) || !info_hash) return OT_ERR_INVALID_ARG;
+  if (!ot::is_hex_info_hash(info_hash)) return OT_ERR_INVALID_ARG;
   std::lock_guard<std::mutex> lock(session->mutex);
+  if (session->destroyed) return OT_ERR_INVALID_ARG;
   auto* rec = session->find(info_hash);
   if (!rec) return OT_ERR_NOT_FOUND;
 #if OPENTORRENT_HAS_LIBTORRENT
@@ -336,8 +399,10 @@ ot_error ot_pause_torrent(ot_session* session, const char* info_hash) {
 }
 
 ot_error ot_resume_torrent(ot_session* session, const char* info_hash) {
-  if (!session || !info_hash) return OT_ERR_INVALID_ARG;
+  if (!session_usable(session) || !info_hash) return OT_ERR_INVALID_ARG;
+  if (!ot::is_hex_info_hash(info_hash)) return OT_ERR_INVALID_ARG;
   std::lock_guard<std::mutex> lock(session->mutex);
+  if (session->destroyed) return OT_ERR_INVALID_ARG;
   auto* rec = session->find(info_hash);
   if (!rec) return OT_ERR_NOT_FOUND;
 #if OPENTORRENT_HAS_LIBTORRENT
@@ -507,13 +572,16 @@ int ot_poll_alerts(ot_session* session, ot_alert* out_alerts, int max_alerts) {
           out.write(buf.data(), static_cast<std::streamsize>(buf.size()));
           session->push_alert(OT_ALERT_RESUME_DATA, hash, "resume written");
         }
+      } else if (auto* rfa = lt::alert_cast<lt::save_resume_data_failed_alert>(a)) {
+        session->set_error(a->message());
+        session->push_alert(OT_ALERT_ERROR, hash_like(rfa->handle), a->message());
       } else if (session->log_enabled) {
         session->push_alert(OT_ALERT_LOG, "", a->message());
       }
     }
+    // Sync status without flooding the alert queue (UI polls statusAt).
     for (auto& kv : session->torrents) {
       session->sync_status(kv.second);
-      session->push_alert(OT_ALERT_PROGRESS, kv.first, "progress");
     }
   }
 #else
@@ -544,20 +612,23 @@ int ot_poll_alerts(ot_session* session, ot_alert* out_alerts, int max_alerts) {
 
 const char* ot_version(void) {
 #if OPENTORRENT_HAS_LIBTORRENT
-  return "OpenTorrent/0.2.1 libtorrent";
+  return "OpenTorrent/0.3.0 libtorrent";
 #else
-  return "OpenTorrent/0.2.1 stub";
+  return "OpenTorrent/0.3.0 stub";
 #endif
 }
 
 const char* ot_last_error(ot_session* session) {
   if (!session) return "null session";
-  return session->last_error.c_str();
+  std::lock_guard<std::mutex> lock(session->mutex);
+  // Return pointer into fixed buffer — safe while session lives; no dangling string.
+  return session->last_error_buf;
 }
 
 void ot_set_log_enabled(ot_session* session, int enabled) {
-  if (!session) return;
+  if (!session_usable(session)) return;
   std::lock_guard<std::mutex> lock(session->mutex);
+  if (session->destroyed) return;
   session->log_enabled = enabled ? 1 : 0;
 }
 

@@ -2,6 +2,8 @@
 
 #include <cstdio>
 #include <cstring>
+#include <string>
+#include <vector>
 
 #define CHECK(cond, msg) do { \
   if (!(cond)) { std::fprintf(stderr, "FAIL: %s\n", msg); return 1; } \
@@ -21,7 +23,26 @@ int main() {
   CHECK(std::strstr(ot_version(), "OpenTorrent") != nullptr, "version");
 
   CHECK(ot_add_magnet(nullptr, "x", ".", nullptr, 0) == OT_ERR_INVALID_ARG, "null session");
-  CHECK(ot_pause_torrent(session, "missing") == OT_ERR_NOT_FOUND, "pause missing");
+  CHECK(ot_pause_torrent(session, "missing") == OT_ERR_INVALID_ARG, "pause bad hash");
+  CHECK(ot_pause_torrent(session, "0123456789abcdef0123456789abcdef01234567") == OT_ERR_NOT_FOUND,
+        "pause missing");
+
+  // Oversized magnet must be rejected.
+  std::string huge(5000, 'a');
+  char hash_huge[64] = {};
+  CHECK(ot_add_magnet(session, huge.c_str(), ".", hash_huge, sizeof(hash_huge)) == OT_ERR_INVALID_ARG,
+        "oversized magnet");
+
+  // Path traversal rejected.
+  CHECK(ot_add_magnet(session,
+                      "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=x",
+                      "../evil", hash_huge, sizeof(hash_huge)) == OT_ERR_INVALID_ARG,
+        "traversal save_path");
+
+  // Bad listen port rejected via apply_settings.
+  ot_session_settings bad = settings;
+  bad.listen_port = 99;
+  CHECK(ot_session_apply_settings(session, &bad) == OT_ERR_INVALID_ARG, "bad port");
 
   char hash[64] = {};
   CHECK(ot_add_magnet(session,
@@ -44,12 +65,32 @@ int main() {
   CHECK(ot_resume_torrent(session, hash) == OT_OK, "resume");
   CHECK(ot_set_sequential(session, hash, 1) == OT_OK, "seq");
 
+  // Stub add-file must not deadlock.
+  char hash_file[64] = {};
+  CHECK(ot_add_torrent_file(session, "dummy.torrent", ".", hash_file, sizeof(hash_file)) == OT_OK,
+        "stub add file no deadlock");
+
   ot_alert alerts[32];
   int n = ot_poll_alerts(session, alerts, 32);
   CHECK(n >= 0, "poll");
 
   CHECK(ot_remove_torrent(session, hash, 0) == OT_OK, "remove");
-  CHECK(ot_torrent_count(session) == 0, "empty");
+
+  // Resume dir + last_error API
+  CHECK(ot_session_load_resume_dir(session, "resume_test") == OT_OK, "load resume dir");
+  CHECK(ot_session_save_resume(session) == OT_OK, "save resume empty");
+  ot_set_log_enabled(session, 1);
+  CHECK(ot_last_error(session) != nullptr, "last_error ptr");
+
+  char hash3[64] = {};
+  CHECK(ot_add_magnet(session,
+                      "magnet:?xt=urn:btih:abcdef0123456789abcdef0123456789abcdef01&dn=resume",
+                      ".", hash3, sizeof(hash3)) == OT_OK,
+        "add for resume");
+  CHECK(ot_pause_torrent(session, hash3) == OT_OK, "pause before save");
+  CHECK(ot_session_save_resume(session) == OT_OK, "save resume with torrent");
+  n = ot_poll_alerts(session, alerts, 32);
+  CHECK(n >= 0, "poll after save");
 
   ot_session_settings got{};
   CHECK(ot_session_get_settings(session, &got) == OT_OK, "get settings");

@@ -16,6 +16,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: "3.44.6"
       - name: Build Windows (CI portable — mock until vcpkg cached)
         working-directory: app
         run: flutter build windows --release --dart-define=OPENTORRENT_MOCK=true
@@ -40,6 +41,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: "3.44.6"
       - name: Build APK
         working-directory: app
         run: flutter build apk --release --dart-define=OPENTORRENT_MOCK=true
@@ -51,11 +53,45 @@ jobs:
           name: android-apk
           path: OpenTorrent-android.apk
 
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.44.6"
+      - name: Build Linux
+        working-directory: app
+        run: flutter build linux --release --dart-define=OPENTORRENT_MOCK=true
+      - name: Package tar.gz
+        run: |
+          mkdir -p dist
+          tar -C app/build/linux/x64/release -czf OpenTorrent-linux-x64-ci.tar.gz bundle
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-tar
+          path: OpenTorrent-linux-x64-ci.tar.gz
+
   publish:
-    needs: [windows, android]
+    needs: [windows, android, linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
+      - name: Collect artifacts + SHA256SUMS
+        run: |
+          mkdir -p release-out
+          cp windows-zip/OpenTorrent-windows-x64-ci.zip release-out/
+          cp android-apk/OpenTorrent-android.apk release-out/
+          cp linux-tar/OpenTorrent-linux-x64-ci.tar.gz release-out/
+          cd release-out
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
       - name: Create / update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -63,9 +99,18 @@ jobs:
           body: |
             ## Artifacts
             - **OpenTorrent-android.apk** — Android release APK
-            - **OpenTorrent-windows-x64-ci.zip** — Windows portable (CI mock engine)
+            - **OpenTorrent-windows-x64-ci.zip** — Windows portable (CI)
+            - **OpenTorrent-linux-x64-ci.tar.gz** — Linux portable (CI)
+            - **SHA256SUMS.txt** — verify downloads: `sha256sum -c SHA256SUMS.txt`
 
-            For the **live libtorrent** Windows build, also attach `OpenTorrent-windows-x64-live.zip` from a machine with `scripts/build_libtorrent_windows.ps1` (see README).
+            Live libtorrent builds (when attached from maintainers):
+            - `OpenTorrent-windows-x64-live.zip`
+            - `OpenTorrent-android-live.apk`
+            - `OpenTorrent-linux-x64-*.tar.gz` / `.deb`
+
+            Verify checksums before installing. No telemetry, no ads.
           files: |
-            windows-zip/OpenTorrent-windows-x64-ci.zip
-            android-apk/OpenTorrent-android.apk
+            release-out/OpenTorrent-windows-x64-ci.zip
+            release-out/OpenTorrent-android.apk
+            release-out/OpenTorrent-linux-x64-ci.tar.gz
+            release-out/SHA256SUMS.txt

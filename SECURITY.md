@@ -16,7 +16,7 @@ Maintainers ([@nrzz](https://github.com/nrzz), [@Dasprakash-Sekar](https://githu
 
 Include:
 
-- Affected platform (Android / Windows) and version/commit
+- Affected platform (Android / Windows / Linux) and version/commit
 - Steps to reproduce
 - Impact (crash, RCE, data loss, etc.)
 

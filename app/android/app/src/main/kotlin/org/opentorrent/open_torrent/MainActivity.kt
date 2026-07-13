@@ -12,6 +12,11 @@ class MainActivity : FlutterActivity() {
     private var channel: MethodChannel? = null
     private var pendingUri: String? = null
 
+    companion object {
+        private const val MAX_URI_LEN = 8192
+        private val ALLOWED_SCHEMES = setOf("magnet", "content", "file", "http", "https")
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
@@ -54,8 +59,27 @@ class MainActivity : FlutterActivity() {
         val action = intent.action ?: return null
         if (action != Intent.ACTION_VIEW && action != Intent.ACTION_SEND) return null
         val data: Uri? = intent.data
-        if (data != null) return data.toString()
-        val stream = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
-        return stream?.toString()
+        val raw = when {
+            data != null -> data.toString()
+            else -> {
+                @Suppress("DEPRECATION")
+                val stream = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+                stream?.toString()
+            }
+        } ?: return null
+        return sanitizeIncomingUri(raw)
+    }
+
+    private fun sanitizeIncomingUri(raw: String): String? {
+        if (raw.isEmpty() || raw.length > MAX_URI_LEN) return null
+        val scheme = raw.substringBefore(':', missingDelimiterValue = "")
+            .lowercase()
+        if (scheme !in ALLOWED_SCHEMES) return null
+        if (scheme == "magnet" && !raw.contains("xt=urn:btih:", ignoreCase = true) &&
+            !raw.contains("xt=urn:btmh:", ignoreCase = true)
+        ) {
+            return null
+        }
+        return raw
     }
 }

@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented here.
 
+## [0.3.0] — 2026-07-14
+
+### Security
+- Native C ABI: input length limits, listen-port validation, hex info-hash checks, path traversal rejection
+- Resume files: size cap, symlink skip, `save_path` forced under configured download root
+- Fixed `ot_last_error` data race (fixed buffer under mutex) and stub `ot_add_torrent_file` deadlock
+- Compiler/linker hardening: MSVC `/GS /guard:cf /sdl`; ELF `-fstack-protector-strong`, `_FORTIFY_SOURCE=2`, full RELRO
+- Desktop native loading uses absolute exe-relative paths only (no DLL/.so hijacking via bare names)
+- Proxy credentials moved out of `session_meta.json` into a private app-support file (Android sandbox / chmod 600)
+- HTTPS-first torrent/RSS downloads with size caps, redirect downgrade rejection, bencode validation, SSRF guard
+- Android: cleartext disabled, backups disabled, network security config, intent scheme allowlist, R8 minify
+
+### Added
+- **Linux desktop** target (`app/linux/`) with `.desktop` magnet/.torrent association
+- Packaging: `scripts/package_release_linux.sh` → tar.gz + `.deb`
+- CI Linux job + `SHA256SUMS.txt` on GitHub Releases
+- Settings toggle: allow HTTP torrent/RSS URLs (off by default)
+
+### Changed
+- Version string `OpenTorrent/0.3.0`
+- Update checker enabled on Linux; verifies via release checksums (no auto-install)
+
 ## [0.2.1] — 2026-07-12
 
 ### Added

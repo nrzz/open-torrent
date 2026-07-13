@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(opentorrent_core VERSION 0.1.0 LANGUAGES CXX)
+project(opentorrent_core VERSION 0.3.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -23,6 +23,25 @@ add_library(opentorrent_core ${_ot_lib_type}
   src/c_api.cpp
   src/utils.cpp
 )
+
+# --- Security hardening flags ---
+if(MSVC)
+  target_compile_options(opentorrent_core PRIVATE /W4 /GS /sdl /guard:cf)
+  target_link_options(opentorrent_core PRIVATE /DYNAMICBASE /NXCOMPAT /guard:cf)
+else()
+  target_compile_options(opentorrent_core PRIVATE
+    -fstack-protector-strong
+    -D_FORTIFY_SOURCE=2
+    -Wall -Wextra
+  )
+  if(UNIX AND NOT APPLE)
+    target_link_options(opentorrent_core PRIVATE
+      -Wl,-z,relro
+      -Wl,-z,now
+      -Wl,-z,noexecstack
+    )
+  endif()
+endif()
 
 if(OPENTORRENT_BUILD_SHARED)
   set_target_properties(opentorrent_core PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
@@ -68,12 +87,10 @@ if(WIN32)
 endif()
 
 if(ANDROID)
-  # Required for __android_log_* if used; also ensures proper link on NDK.
   find_library(ANDROID_LOG_LIB log)
   if(ANDROID_LOG_LIB)
     target_link_libraries(opentorrent_core PUBLIC ${ANDROID_LOG_LIB})
   endif()
-  # Export C API symbols for Dart FFI (DynamicLibrary.open).
   set_target_properties(opentorrent_core PROPERTIES
     OUTPUT_NAME opentorrent_core
     ANDROID_ARM_MODE arm

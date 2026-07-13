@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("dev.flutter.flutter-gradle-plugin")
@@ -5,7 +8,6 @@ plugins {
 
 android {
     namespace = "org.opentorrent.open_torrent"
-    // file_picker / flutter_plugin_android_lifecycle require compileSdk 36+
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
@@ -17,14 +19,12 @@ android {
 
     defaultConfig {
         applicationId = "org.opentorrent.open_torrent"
-        // Live libtorrent .so is built for API 28+ (aligned_alloc / NDK triplet).
         minSdk = maxOf(flutter.minSdkVersion, 28)
         targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
         ndk {
-            // Prefer arm64; include others only when bundled.
             abiFilters += listOf("arm64-v8a")
         }
     }
@@ -41,11 +41,34 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            val keystorePropertiesFile = rootProject.file("key.properties")
+            if (keystorePropertiesFile.exists()) {
+                val keystoreProperties = Properties()
+                keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // Debug keystore for GitHub Releases sideload builds.
-            // Replace with a release keystore + key.properties for store distribution.
-            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            val hasReleaseKey = rootProject.file("key.properties").exists()
+            signingConfig = if (hasReleaseKey) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

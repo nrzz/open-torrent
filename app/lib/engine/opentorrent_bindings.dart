@@ -227,6 +227,12 @@ typedef ApplySettings = int Function(
   ffi.Pointer<OtSessionSettings>,
 );
 
+typedef _LastErrorNative = ffi.Pointer<ffi.Char> Function(ffi.Pointer<ffi.Void>);
+typedef LastErrorFn = ffi.Pointer<ffi.Char> Function(ffi.Pointer<ffi.Void>);
+
+typedef _SetLogNative = ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Int32);
+typedef SetLogFn = void Function(ffi.Pointer<ffi.Void>, int);
+
 class OpenTorrentNative {
   OpenTorrentNative(ffi.DynamicLibrary lib)
       : sessionCreate = lib.lookupFunction<_SessionCreateNative, SessionCreate>(
@@ -261,7 +267,11 @@ class OpenTorrentNative {
         saveResume = lib
             .lookupFunction<_SaveResumeNative, SaveResume>('ot_session_save_resume'),
         applySettings = lib.lookupFunction<_ApplySettingsNative, ApplySettings>(
-            'ot_session_apply_settings');
+            'ot_session_apply_settings'),
+        lastError =
+            lib.lookupFunction<_LastErrorNative, LastErrorFn>('ot_last_error'),
+        setLogEnabled =
+            lib.lookupFunction<_SetLogNative, SetLogFn>('ot_set_log_enabled');
 
   final SessionCreate sessionCreate;
   final SessionDestroy sessionDestroy;
@@ -281,38 +291,43 @@ class OpenTorrentNative {
   final LoadResume loadResumeDir;
   final SaveResume saveResume;
   final ApplySettings applySettings;
+  final LastErrorFn lastError;
+  final SetLogFn setLogEnabled;
 
   static OpenTorrentNative? tryLoad() {
     if (Platform.isAndroid) {
-      // Packaged under jniLibs as libopentorrent_core.so — system loader resolves it.
-      for (final name in const [
-        'libopentorrent_core.so',
-        'opentorrent_core.so',
-      ]) {
-        try {
-          return OpenTorrentNative(ffi.DynamicLibrary.open(name));
-        } catch (_) {}
+      // APK jniLibs — system loader resolves from the app's nativeLibraryDir only.
+      try {
+        return OpenTorrentNative(
+            ffi.DynamicLibrary.open('libopentorrent_core.so'));
+      } catch (_) {
+        return null;
       }
-      return null;
     }
 
+    // Desktop: absolute paths only — never bare names (DLL/.so hijacking).
     final names = Platform.isWindows
         ? const ['opentorrent_core.dll']
-        : const ['libopentorrent_core.so', 'opentorrent_core.so'];
+        : const ['libopentorrent_core.so'];
 
     final candidates = <String>[];
     try {
       final exeDir = File(Platform.resolvedExecutable).parent.path;
+      final sep = Platform.pathSeparator;
       for (final name in names) {
-        candidates.add('$exeDir${Platform.pathSeparator}$name');
-        candidates.add(
-            '$exeDir${Platform.pathSeparator}native${Platform.pathSeparator}$name');
+        candidates.add('$exeDir$sep$name');
+        candidates.add('$exeDir${sep}native$sep$name');
+        if (!Platform.isWindows) {
+          candidates.add('$exeDir${sep}lib$sep$name');
+        }
       }
-    } catch (_) {}
-    candidates.addAll(names);
+    } catch (_) {
+      return null;
+    }
 
     for (final path in candidates) {
       try {
+        if (!File(path).existsSync()) continue;
         return OpenTorrentNative(ffi.DynamicLibrary.open(path));
       } catch (_) {
         // try next
