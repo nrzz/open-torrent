@@ -23,11 +23,23 @@ cp -a "$SO" "$NATIVE_OUT/"
 VCPKG_ROOT="${VCPKG_ROOT:-$ROOT/third_party/vcpkg}"
 LIBDIR="$VCPKG_ROOT/installed/x64-linux/lib"
 if [[ -d "$LIBDIR" ]]; then
-  # Prefer runtime shared objects commonly needed by libtorrent
   for pattern in libtorrent-rasterbar.so* libssl.so* libcrypto.so* libboost_system.so*; do
     # shellcheck disable=SC2086
     cp -a $LIBDIR/$pattern "$NATIVE_OUT/" 2>/dev/null || true
   done
+fi
+
+# Ensure bundled .so files resolve siblings in the same directory at runtime.
+if command -v patchelf >/dev/null 2>&1; then
+  shopt -s nullglob
+  for f in "$NATIVE_OUT"/*.so "$NATIVE_OUT"/*.so.*; do
+    [[ -f "$f" && ! -L "$f" ]] || continue
+    patchelf --set-rpath '$ORIGIN' "$f" 2>/dev/null || true
+  done
+  shopt -u nullglob
+  echo "ok: patchelf RPATH=\$ORIGIN applied"
+else
+  echo "WARN: patchelf not found — install patchelf for reliable runtime linking"
 fi
 
 echo "Native bundle ready at $NATIVE_OUT"

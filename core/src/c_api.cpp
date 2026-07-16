@@ -612,9 +612,9 @@ int ot_poll_alerts(ot_session* session, ot_alert* out_alerts, int max_alerts) {
 
 const char* ot_version(void) {
 #if OPENTORRENT_HAS_LIBTORRENT
-  return "OpenTorrent/0.3.0 libtorrent";
+  return "OpenTorrent/0.3.1 libtorrent";
 #else
-  return "OpenTorrent/0.3.0 stub";
+  return "OpenTorrent/0.3.1 stub";
 #endif
 }
 

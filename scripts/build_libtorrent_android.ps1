@@ -21,11 +21,17 @@ $env:ANDROID_NDK_HOME = $AndroidNdk
 $env:ANDROID_NDK = $AndroidNdk
 Write-Host "Using NDK: $AndroidNdk"
 
-if (-not (Test-Path "$VcpkgRoot\vcpkg.exe")) {
+$isWin = $IsWindows -or ($env:OS -eq 'Windows_NT')
+$vcpkgExe = if ($isWin) { Join-Path $VcpkgRoot 'vcpkg.exe' } else { Join-Path $VcpkgRoot 'vcpkg' }
+if (-not (Test-Path $vcpkgExe)) {
   if (-not (Test-Path $VcpkgRoot)) {
     git clone https://github.com/microsoft/vcpkg.git $VcpkgRoot
   }
-  & "$VcpkgRoot\bootstrap-vcpkg.bat"
+  if ($isWin) {
+    & "$VcpkgRoot\bootstrap-vcpkg.bat"
+  } else {
+    & "$VcpkgRoot/bootstrap-vcpkg.sh"
+  }
 }
 
 $allAbis = @(
@@ -52,7 +58,7 @@ foreach ($entry in $abis) {
   $abi = $entry.Abi
   $triplet = $entry.Triplet
   Write-Host "==> vcpkg install libtorrent:$triplet"
-  & "$VcpkgRoot\vcpkg.exe" install "libtorrent:$triplet"
+  & $vcpkgExe install "libtorrent:$triplet"
   if ($LASTEXITCODE -ne 0) { throw "vcpkg install failed for $triplet" }
 
   $buildDir = Join-Path $Root "core\build-android-$abi"

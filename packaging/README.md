@@ -2,34 +2,51 @@
 
 Primary channel: **[GitHub Releases](https://github.com/nrzz/open-torrent/releases)**.
 
+Tagged releases (`v*`) run [`.github/workflows/release.yml`](../.github/workflows/release.yml), which builds **live** libtorrent artifacts for Windows, Android, and Linux, then uploads them with `SHA256SUMS.txt`.
+
 ## Cutting a release
 
-1. Update [CHANGELOG.md](../CHANGELOG.md) and bump `version` in [`app/pubspec.yaml`](../app/pubspec.yaml).
-2. Build artifacts locally (recommended for live Windows):
+1. Update [CHANGELOG.md](../CHANGELOG.md) and bump `version` in [`app/pubspec.yaml`](../app/pubspec.yaml) (keep core `ot_version` / user-agent in sync).
+2. Push to `main`, then tag:
+
+```bash
+git tag v0.3.1
+git push origin v0.3.1
+```
+
+3. Wait for the Release workflow (`linux-live`, `windows-live`, `android-live`, `publish`). Confirm assets:
+
+- `OpenTorrent-windows-x64-live.zip` (+ `OpenTorrent-Setup-0.3.1.exe` when Inno builds)
+- `OpenTorrent-android-live.apk`
+- `OpenTorrent-linux-x64-0.3.1.tar.gz`
+- `OpenTorrent_0.3.1_amd64.deb`
+- `SHA256SUMS.txt`
+
+### Local live builds (optional)
 
 ```powershell
-# Windows live (libtorrent)
+# Windows
+.\scripts\build_libtorrent_windows.ps1
 .\scripts\package_release_windows_live.ps1
+.\scripts\e2e_verify_windows_live.ps1
 
-# Android APK (requires Android SDK)
-cd app
-flutter build apk --release --dart-define=OPENTORRENT_MOCK=true
-copy build\app\outputs\flutter-apk\app-release.apk ..\dist\OpenTorrent-android.apk
+# Android
+.\scripts\build_libtorrent_android.ps1 -OnlyAbi arm64-v8a
+.\scripts\package_release_android_live.ps1
+.\scripts\e2e_verify_android_live.ps1
 ```
 
-3. Tag and push, then attach release assets:
-
-```powershell
-git tag v0.2.0
-git push origin v0.2.0
-gh release upload v0.2.0 dist\OpenTorrent-windows-x64-live.zip dist\OpenTorrent-android.apk --clobber
+```bash
+# Linux
+./scripts/build_libtorrent_linux.sh
+./scripts/bundle_native_linux.sh
+VERSION=0.3.1 ./scripts/package_release_linux.sh
+./scripts/e2e_verify_linux.sh dist/OpenTorrent-linux-x64 --require-live
 ```
-
-4. The [Release workflow](../.github/workflows/release.yml) also builds CI Windows zip + Android APK on tag push.
 
 ## Windows installer (optional)
 
-Compile [`windows/opentorrent.iss`](windows/opentorrent.iss) with [Inno Setup](https://jrsoftware.org/isinfo.php) after a release build, then attach `OpenTorrent-Setup-*.exe` to the release.
+Compile [`windows/opentorrent.iss`](windows/opentorrent.iss) with [Inno Setup](https://jrsoftware.org/isinfo.php) after a release build (also attempted in CI via Chocolatey).
 
 ## winget
 

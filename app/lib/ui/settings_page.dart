@@ -314,7 +314,7 @@ class _SettingsPageState extends State<SettingsPage> {
               final checker = UpdateChecker(
                 owner: 'nrzz',
                 repo: 'open-torrent',
-                currentVersion: '0.3.0',
+                currentVersion: '0.3.1',
               );
               final available = await checker.isUpdateAvailable();
               if (mounted) {

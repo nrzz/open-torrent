@@ -42,7 +42,25 @@ Copy the resulting `opentorrent_core.dll` (and libtorrent/OpenSSL DLLs) next to 
 .\scripts\e2e_verify_android_live.ps1
 ```
 
+```bash
+# Linux host / CI
+export ANDROID_NDK=/path/to/ndk
+./scripts/build_libtorrent_android.sh arm64-v8a
+./scripts/package_release_android_live.sh
+```
+
 The shared library lands in `app/android/app/src/main/jniLibs/<abi>/libopentorrent_core.so` (gitignored). Rebuild the Flutter APK **without** `OPENTORRENT_MOCK`.
+
+## Linux (vcpkg)
+
+```bash
+./scripts/build_libtorrent_linux.sh
+./scripts/bundle_native_linux.sh   # patchelf RPATH=\$ORIGIN
+VERSION=0.3.1 ./scripts/package_release_linux.sh
+./scripts/e2e_verify_linux.sh dist/OpenTorrent-linux-x64 --require-live
+```
+
+Requires GTK 3, AppIndicator (`libayatana-appindicator3-dev`), and `libsecret-1-dev` for Flutter desktop plugins.
 
 ## Manifest mode
 

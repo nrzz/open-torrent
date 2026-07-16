@@ -8,88 +8,182 @@ on:
 permissions:
   contents: write
 
+env:
+  FLUTTER_VERSION: "3.44.6"
+  VERSION: "0.3.1"
+
 jobs:
-  windows:
-    runs-on: windows-latest
+  linux-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
+      - name: Install Linux deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config patchelf \
+            libgtk-3-dev liblzma-dev libstdc++-12-dev \
+            libayatana-appindicator3-dev libayatana-appindicator3-1 \
+            libsecret-1-dev
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: "3.44.6"
-      - name: Build Windows (CI portable — mock until vcpkg cached)
-        working-directory: app
-        run: flutter build windows --release --dart-define=OPENTORRENT_MOCK=true
-      - name: Zip Windows portable
-        shell: pwsh
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Cache vcpkg (x64-linux)
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/vcpkg/installed
+            third_party/vcpkg/downloads
+          key: vcpkg-x64-linux-${{ hashFiles('core/vcpkg.json') }}
+          restore-keys: |
+            vcpkg-x64-linux-
+      - name: Build live libtorrent core
         run: |
-          Compress-Archive -Path app/build/windows/x64/runner/Release/* -DestinationPath OpenTorrent-windows-x64-ci.zip
-      - name: Upload Windows artifact
+          chmod +x scripts/*.sh
+          ./scripts/build_libtorrent_linux.sh
+          ./scripts/bundle_native_linux.sh
+      - name: Package tar.gz + .deb
+        run: VERSION=${{ env.VERSION }} ./scripts/package_release_linux.sh
+      - name: E2E verify (require live)
+        run: ./scripts/e2e_verify_linux.sh dist/OpenTorrent-linux-x64 --require-live
+      - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: windows-zip
-          path: OpenTorrent-windows-x64-ci.zip
+          name: linux-live
+          path: |
+            dist/OpenTorrent-linux-x64-${{ env.VERSION }}.tar.gz
+            dist/OpenTorrent_${{ env.VERSION }}_amd64.deb
+          if-no-files-found: error
 
-  android:
+  windows-live:
+    runs-on: windows-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: seanmiddleditch/gha-setup-ninja@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Cache vcpkg (x64-windows)
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/vcpkg/installed
+            third_party/vcpkg/downloads
+          key: vcpkg-x64-windows-${{ hashFiles('core/vcpkg.json') }}
+          restore-keys: |
+            vcpkg-x64-windows-
+      - name: Build live libtorrent core
+        shell: pwsh
+        run: .\scripts\build_libtorrent_windows.ps1
+      - name: Package live Windows zip
+        shell: pwsh
+        run: .\scripts\package_release_windows_live.ps1
+      - name: E2E verify Windows live
+        shell: pwsh
+        run: .\scripts\e2e_verify_windows_live.ps1
+      - name: Optional Inno Setup installer
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { $iscc = "${env:ProgramFiles}\Inno Setup 6\ISCC.exe" }
+          if (Test-Path $iscc) {
+            & $iscc packaging\windows\opentorrent.iss
+            Get-ChildItem dist -Filter 'OpenTorrent-Setup-*.exe' | ForEach-Object { Write-Host "Built $($_.FullName)" }
+          } else {
+            Write-Host 'WARN: ISCC not found; skipping installer'
+          }
+        continue-on-error: true
+      - name: Upload Windows zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-live
+          path: dist/OpenTorrent-windows-x64-live.zip
+          if-no-files-found: error
+      - name: Upload Windows installer (optional)
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-setup
+          path: dist/OpenTorrent-Setup-*.exe
+          if-no-files-found: warn
+          overwrite: true
+
+  android-live:
     runs-on: ubuntu-latest
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          flutter-version: "3.44.6"
-      - name: Build APK
-        working-directory: app
-        run: flutter build apk --release --dart-define=OPENTORRENT_MOCK=true
-      - name: Rename APK
-        run: cp app/build/app/outputs/flutter-apk/app-release.apk OpenTorrent-android.apk
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-apk
-          path: OpenTorrent-android.apk
-
-  linux:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Linux deps
+      - name: Setup Android SDK + NDK
+        uses: android-actions/setup-android@v3
+      - name: Install NDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "ndk;28.2.13676358" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          echo "ANDROID_NDK=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+      - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+          sudo apt-get install -y ninja-build cmake pkg-config
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: "3.44.6"
-      - name: Build Linux
-        working-directory: app
-        run: flutter build linux --release --dart-define=OPENTORRENT_MOCK=true
-      - name: Package tar.gz
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Cache vcpkg (arm64-android)
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/vcpkg/installed
+            third_party/vcpkg/downloads
+          key: vcpkg-arm64-android-${{ hashFiles('core/vcpkg.json') }}
+          restore-keys: |
+            vcpkg-arm64-android-
+      - name: Build live libtorrent (arm64)
         run: |
-          mkdir -p dist
-          tar -C app/build/linux/x64/release -czf OpenTorrent-linux-x64-ci.tar.gz bundle
-      - name: Upload Linux artifact
+          chmod +x scripts/*.sh
+          ./scripts/build_libtorrent_android.sh arm64-v8a
+      - name: Package live APK
+        run: ./scripts/package_release_android_live.sh
+      - name: E2E verify Android live
+        shell: pwsh
+        run: ./scripts/e2e_verify_android_live.ps1
+      - name: Upload Android artifact
         uses: actions/upload-artifact@v4
         with:
-          name: linux-tar
-          path: OpenTorrent-linux-x64-ci.tar.gz
+          name: android-live
+          path: dist/OpenTorrent-android-live.apk
+          if-no-files-found: error
 
   publish:
-    needs: [windows, android, linux]
+    needs: [linux-live, windows-live, android-live]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
       - name: Collect artifacts + SHA256SUMS
         run: |
           mkdir -p release-out
-          cp windows-zip/OpenTorrent-windows-x64-ci.zip release-out/
-          cp android-apk/OpenTorrent-android.apk release-out/
-          cp linux-tar/OpenTorrent-linux-x64-ci.tar.gz release-out/
+          cp -v windows-live/OpenTorrent-windows-x64-live.zip release-out/
+          cp -v android-live/OpenTorrent-android-live.apk release-out/
+          cp -v linux-live/OpenTorrent-linux-x64-${{ env.VERSION }}.tar.gz release-out/
+          cp -v linux-live/OpenTorrent_${{ env.VERSION }}_amd64.deb release-out/
+          if compgen -G "windows-setup/OpenTorrent-Setup-*.exe" > /dev/null; then
+            cp -v windows-setup/OpenTorrent-Setup-*.exe release-out/
+          fi
           cd release-out
+          ls -la
+          test -f OpenTorrent-windows-x64-live.zip
+          test -f OpenTorrent-android-live.apk
+          test -f OpenTorrent-linux-x64-${{ env.VERSION }}.tar.gz
+          test -f OpenTorrent_${{ env.VERSION }}_amd64.deb
           sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
       - name: Create / update GitHub Release
@@ -97,20 +191,18 @@ jobs:
         with:
           generate_release_notes: true
           body: |
-            ## Artifacts
-            - **OpenTorrent-android.apk** — Android release APK
-            - **OpenTorrent-windows-x64-ci.zip** — Windows portable (CI)
-            - **OpenTorrent-linux-x64-ci.tar.gz** — Linux portable (CI)
-            - **SHA256SUMS.txt** — verify downloads: `sha256sum -c SHA256SUMS.txt`
+            ## OpenTorrent ${{ env.VERSION }} — live engines
 
-            Live libtorrent builds (when attached from maintainers):
-            - `OpenTorrent-windows-x64-live.zip`
-            - `OpenTorrent-android-live.apk`
-            - `OpenTorrent-linux-x64-*.tar.gz` / `.deb`
+            All artifacts below are **live libtorrent** builds (not mock).
+
+            - **OpenTorrent-windows-x64-live.zip** — Windows portable
+            - **OpenTorrent-Setup-${{ env.VERSION }}.exe** — Windows installer (when built)
+            - **OpenTorrent-android-live.apk** — Android arm64 (sideload; debug-keystore if unsigned Play key absent)
+            - **OpenTorrent-linux-x64-${{ env.VERSION }}.tar.gz** — Ubuntu/Linux portable
+            - **OpenTorrent_${{ env.VERSION }}_amd64.deb** — Debian/Ubuntu package
+            - **SHA256SUMS.txt** — verify: `sha256sum -c SHA256SUMS.txt`
+
+            After installing on Linux, magnet links and `.torrent` files open via the desktop association (`opentorrent %U`).
 
             Verify checksums before installing. No telemetry, no ads.
-          files: |
-            release-out/OpenTorrent-windows-x64-ci.zip
-            release-out/OpenTorrent-android.apk
-            release-out/OpenTorrent-linux-x64-ci.tar.gz
-            release-out/SHA256SUMS.txt
+          files: release-out/*

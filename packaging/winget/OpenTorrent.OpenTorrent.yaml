@@ -1,7 +1,7 @@
 # OpenTorrent winget manifest (submit to microsoft/winget-pkgs)
 
 PackageIdentifier: OpenTorrent.OpenTorrent
-PackageVersion: 0.3.0
+PackageVersion: 0.3.1
 PackageLocale: en-US
 Publisher: OpenTorrent Contributors
 PackageName: OpenTorrent
@@ -10,7 +10,7 @@ ShortDescription: Free, ad-free BitTorrent client for Windows
 Installers:
   - Architecture: x64
     InstallerType: inno
-    InstallerUrl: https://github.com/nrzz/open-torrent/releases/download/v0.3.0/OpenTorrent-Setup-0.3.0.exe
+    InstallerUrl: https://github.com/nrzz/open-torrent/releases/download/v0.3.1/OpenTorrent-Setup-0.3.1.exe
     InstallerSha256: REPLACE_AFTER_RELEASE
 ManifestType: singleton
 ManifestVersion: 1.6.0

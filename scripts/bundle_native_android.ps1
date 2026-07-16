@@ -33,7 +33,8 @@ foreach ($abi in $abiMap.Keys) {
 
   # Package C++ shared STL used by the NDK build.
   if ($ndk) {
-    $stl = Join-Path $ndk "toolchains\llvm\prebuilt\windows-x86_64\sysroot\usr\lib\$($abiMap[$abi])\libc++_shared.so"
+    $prebuilt = if ($IsWindows -or $env:OS -eq 'Windows_NT') { 'windows-x86_64' } else { 'linux-x86_64' }
+    $stl = Join-Path $ndk "toolchains/llvm/prebuilt/$prebuilt/sysroot/usr/lib/$($abiMap[$abi])/libc++_shared.so"
     if (Test-Path $stl) {
       Copy-Item $stl -Destination (Join-Path $destDir 'libc++_shared.so') -Force
       Write-Host "Copied libc++_shared.so for $abi"

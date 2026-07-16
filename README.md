@@ -10,13 +10,13 @@ Built on [libtorrent-rasterbar](https://libtorrent.org/) with a single [Flutter]
 
 | Platform | Artifact | Notes |
 |----------|----------|--------|
-| Windows | `OpenTorrent-windows-x64-live.zip` | Live libtorrent (`scripts/package_release_windows_live.ps1`) |
-| Android | `OpenTorrent-android-live.apk` | Live libtorrent arm64 (`scripts/build_libtorrent_android.ps1`) |
-| Linux | `OpenTorrent-linux-x64-*.tar.gz` / `.deb` | `scripts/package_release_linux.sh` |
+| Windows | `OpenTorrent-windows-x64-live.zip` (+ Setup) | Live libtorrent; CI builds on tag |
+| Android | `OpenTorrent-android-live.apk` | Live libtorrent arm64; CI builds on tag |
+| Linux | `OpenTorrent-linux-x64-0.3.1.tar.gz` / `.deb` | Live libtorrent; magnet CLI + desktop MIME |
 
 Latest builds: **[GitHub Releases](https://github.com/nrzz/open-torrent/releases)** — always verify `SHA256SUMS.txt`.
 
-## Security (v0.3.0+)
+## Security (v0.3.1+)
 
 - Hardened native C ABI + compiler flags (CFG / stack protector / RELRO)
 - Absolute-path native library loading (anti DLL hijacking)
@@ -54,7 +54,7 @@ flutter build windows --release
 .\build\windows\x64\runner\Release\open_torrent.exe
 ```
 
-Engine line / About should show `OpenTorrent/0.3.0 libtorrent` — not `mock`. Do **not** pass `OPENTORRENT_MOCK` for live builds.
+Engine line / About should show `OpenTorrent/0.3.1 libtorrent` — not `mock`. Do **not** pass `OPENTORRENT_MOCK` for live builds.
 
 ### Live engine (Android)
 
@@ -70,8 +70,10 @@ Engine line / About should show `OpenTorrent/0.3.0 libtorrent` — not `mock`. D
 ```bash
 ./scripts/build_libtorrent_linux.sh
 ./scripts/bundle_native_linux.sh
-./scripts/package_release_linux.sh
-# Artifacts under dist/
+VERSION=0.3.1 ./scripts/package_release_linux.sh
+./scripts/e2e_verify_linux.sh dist/OpenTorrent-linux-x64 --require-live
+# Artifacts: dist/OpenTorrent-linux-x64-0.3.1.tar.gz and OpenTorrent_0.3.1_amd64.deb
+# Magnets: `opentorrent 'magnet:?xt=urn:btih:...'` or click a magnet in the browser
 ```
 
 ### UI-only (mock engine — no native libtorrent)

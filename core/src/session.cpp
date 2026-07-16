@@ -258,7 +258,7 @@ ot_session* ot_session_create(const ot_session_settings* settings) {
 
 #if OPENTORRENT_HAS_LIBTORRENT
   lt::settings_pack pack;
-  pack.set_str(lt::settings_pack::user_agent, "OpenTorrent/0.3.0 libtorrent/" LIBTORRENT_VERSION);
+  pack.set_str(lt::settings_pack::user_agent, "OpenTorrent/0.3.1 libtorrent/" LIBTORRENT_VERSION);
   pack.set_bool(lt::settings_pack::enable_dht, true);
   pack.set_bool(lt::settings_pack::enable_lsd, true);
   pack.set_int(lt::settings_pack::alert_mask,

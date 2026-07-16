@@ -7,12 +7,13 @@ import 'package:tray_manager/tray_manager.dart';
 
 import 'engine/torrent_controller.dart';
 import 'platform/android_service.dart';
+import 'platform/desktop_deep_links.dart';
 import 'ui/home_page.dart';
 
 final torrentController = TorrentController();
 final notifications = FlutterLocalNotificationsPlugin();
 
-Future<void> main() async {
+Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
 
   if (Platform.isWindows || Platform.isLinux) {
@@ -55,6 +56,10 @@ Future<void> main() async {
 
   if (Platform.isAndroid) {
     await AndroidDownloadService.ensureStarted(torrentController);
+  }
+
+  if (Platform.isLinux || Platform.isWindows) {
+    await DesktopDeepLinks.handleArgs(torrentController, args);
   }
 
   runApp(const OpenTorrentApp());

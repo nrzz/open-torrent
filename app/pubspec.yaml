@@ -1,7 +1,7 @@
 name: open_torrent
 description: Free, ad-free BitTorrent client for Android, Windows, and Linux.
 publish_to: "none"
-version: 0.3.0+4
+version: 0.3.1+5
 
 environment:
   sdk: ^3.12.2

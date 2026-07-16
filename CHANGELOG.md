@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here.
 
+## [0.3.1] — 2026-07-16
+
+### Fixed
+- Linux CI/release builds: install AppIndicator + libsecret deps so `tray_manager` links on Ubuntu runners
+- Linux packaging Depends include `libayatana-appindicator3-1`; `.deb` runs `update-desktop-database` / `update-mime-database`
+
+### Added
+- Linux CLI deep links: magnet / `.torrent` / http(s) argv open via `addMagnet` / `addTorrentFile`
+- Live libtorrent release jobs for **Linux**, **Windows**, and **Android** with vcpkg cache; publish live artifacts + `SHA256SUMS.txt` only
+- `patchelf` `$ORIGIN` RPATH on bundled Linux `.so` files; hicolor icons in `.deb`
+- `scripts/e2e_verify_windows_live.ps1` and hardened `e2e_verify_linux.sh --require-live`
+
+### Changed
+- Version string `OpenTorrent/0.3.1`
+- GitHub Release artifacts: `OpenTorrent-linux-x64-0.3.1.tar.gz`, `OpenTorrent_0.3.1_amd64.deb`, Windows live zip (+ Setup when built), Android live APK
+
 ## [0.3.0] — 2026-07-14
 
 ### Security
