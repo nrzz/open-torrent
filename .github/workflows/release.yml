@@ -60,6 +60,10 @@ jobs:
   windows-live:
     runs-on: windows-latest
     timeout-minutes: 360
+    env:
+      # Force repo-local classic vcpkg (ignore runner/VS VCPKG_ROOT).
+      OPENTORRENT_VCPKG_ROOT: ${{ github.workspace }}/third_party/vcpkg
+      VCPKG_ROOT: ${{ github.workspace }}/third_party/vcpkg
     steps:
       - uses: actions/checkout@v4
       - uses: ilammy/msvc-dev-cmd@v1
