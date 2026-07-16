@@ -12,15 +12,38 @@ $VcpkgRoot = if ($env:OPENTORRENT_VCPKG_ROOT) {
 }
 $env:VCPKG_ROOT = $VcpkgRoot
 
-if (-not (Test-Path (Join-Path $VcpkgRoot "vcpkg.exe"))) {
-  if (-not (Test-Path $VcpkgRoot)) {
-    git clone https://github.com/microsoft/vcpkg.git $VcpkgRoot
-    if ($LASTEXITCODE -ne 0) { throw "git clone vcpkg failed" }
+function Ensure-Vcpkg {
+  $exe = Join-Path $VcpkgRoot "vcpkg.exe"
+  if (Test-Path $exe) { return }
+
+  # Cache may restore installed/downloads without the tool — re-clone, keep cache trees.
+  $keep = Join-Path ([System.IO.Path]::GetTempPath()) ("ot_vcpkg_keep_" + [guid]::NewGuid().ToString("N"))
+  New-Item -ItemType Directory -Force -Path $keep | Out-Null
+  foreach ($name in @("installed", "downloads")) {
+    $src = Join-Path $VcpkgRoot $name
+    if (Test-Path $src) {
+      Move-Item $src (Join-Path $keep $name) -Force
+    }
   }
+  if (Test-Path $VcpkgRoot) {
+    Remove-Item $VcpkgRoot -Recurse -Force
+  }
+  git clone https://github.com/microsoft/vcpkg.git $VcpkgRoot
+  if ($LASTEXITCODE -ne 0) { throw "git clone vcpkg failed" }
+  foreach ($name in @("installed", "downloads")) {
+    $src = Join-Path $keep $name
+    if (Test-Path $src) {
+      Move-Item $src (Join-Path $VcpkgRoot $name) -Force
+    }
+  }
+  Remove-Item $keep -Recurse -Force -ErrorAction SilentlyContinue
+
   & "$VcpkgRoot\bootstrap-vcpkg.bat"
   if ($LASTEXITCODE -ne 0) { throw "bootstrap-vcpkg failed" }
+  if (-not (Test-Path $exe)) { throw "vcpkg.exe missing after bootstrap" }
 }
 
+Ensure-Vcpkg
 Write-Host "Using vcpkg at $VcpkgRoot"
 & "$VcpkgRoot\vcpkg.exe" install libtorrent:x64-windows
 if ($LASTEXITCODE -ne 0) { throw "vcpkg install libtorrent:x64-windows failed" }
