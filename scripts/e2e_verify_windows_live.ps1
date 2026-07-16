@@ -7,7 +7,7 @@ $releaseDir = Join-Path $Root 'app\build\windows\x64\runner\Release'
 $probeDir = $null
 $tmp = $null
 if (Test-Path $zip) {
-  $tmp = Join-Path $env:TEMP ("ot_win_e2e_" + [guid]::NewGuid().ToString('N'))
+  $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("ot_win_e2e_" + [guid]::NewGuid().ToString('N'))
   New-Item -ItemType Directory -Force -Path $tmp | Out-Null
   Expand-Archive -Path $zip -DestinationPath $tmp -Force
   $probeDir = $tmp

@@ -20,7 +20,9 @@ try {
   }
 
   # Extract .so and check for ot_version / libtorrent strings
-  $tmp = Join-Path $env:TEMP 'ot_apk_so_check'
+  # $env:TEMP is often unset under pwsh on Linux runners — use BCL temp path.
+  $tmpRoot = [System.IO.Path]::GetTempPath()
+  $tmp = Join-Path $tmpRoot 'ot_apk_so_check'
   if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
   New-Item -ItemType Directory -Force -Path $tmp | Out-Null
   $first = $sos[0]
